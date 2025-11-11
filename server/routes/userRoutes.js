@@ -1,10 +1,14 @@
 import express from "express";
-import { protect } from "../middleware/authMiddleware.js";
-import { getUserData, storeRecentSearchedCities } from "../controllers/userController.js";
+import { requireAuth } from "@clerk/express";
+import { syncClerkUser, getUserData, storeRecentSearchedCities } from "../controllers/userController.js";
 
 const userRouter = express.Router();
 
-userRouter.get("/", protect, getUserData);
-userRouter.post("/store-recent-search", protect, storeRecentSearchedCities);
+// upsert the signed-in user into Mongo with default role "user"
+userRouter.post("/sync", requireAuth(), syncClerkUser);
+
+// signed-in endpoints
+userRouter.get("/", requireAuth(), getUserData);
+userRouter.post("/store-recent-search", requireAuth(), storeRecentSearchedCities);
 
 export default userRouter;
