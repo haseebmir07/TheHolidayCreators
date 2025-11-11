@@ -1,9 +1,14 @@
-import express from "express";
-import { protect } from "../middleware/authMiddleware.js";
-import { registerHotel } from "../controllers/hotelController.js";
+import { Router } from "express";
+import { requireAuth } from "@clerk/express";
+import { requireRole } from "../middleware/requireRole.js";
+import { registerHotel, getAllHotels } from "../controllers/hotelController.js";
 
-const hotelRouter = express.Router();
+const router = Router();
 
-hotelRouter.post("/", protect, registerHotel);
+// Only hotel owners can list/register a hotel
+router.post("/", requireAuth(), requireRole("hotelOwner"), registerHotel);
 
-export default hotelRouter;
+// Anyone can view hotels
+router.get("/", getAllHotels);
+
+export default router;

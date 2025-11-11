@@ -3,6 +3,7 @@ import Booking from "../models/Booking.js";
 import Hotel from "../models/Hotel.js";
 import Room from "../models/Room.js";
 import stripe from "stripe";
+import { getAuth } from "@clerk/express";
 
 // Function to Check Availablity of Room
 const checkAvailability = async ({ checkInDate, checkOutDate, room }) => {
@@ -19,6 +20,45 @@ const checkAvailability = async ({ checkInDate, checkOutDate, room }) => {
 
   } catch (error) {
     console.error(error.message);
+  }
+};
+
+export const getOwnerBookings = async (req, res) => {
+  try {
+    const { userId } = getAuth(req);             // Clerk id of current owner
+    if (!userId) return res.status(401).json({ success: false, message: "Not signed in" });
+
+    // Find the hotels owned by this user
+    const hotels = await Hotel.find({ owner: userId }).select("_id").lean();
+    const hotelIds = hotels.map(h => String(h._id));
+
+    // Fetch bookings for those hotels and populate related docs
+    const bookings = await Booking.find({ hotel: { $in: hotelIds } })
+      .populate({ path: "user", select: "username email image" })   // -> booking.user.username / email
+      .populate({ path: "room", select: "roomType" })               // -> booking.room.roomType
+      .populate({ path: "hotel", select: "name" })                  // -> booking.hotel.name
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Enrich with derived fields
+    const enriched = bookings.map(b => {
+      const checkIn = new Date(b.checkInDate);
+      const checkOut = new Date(b.checkOutDate);
+      const nights = Math.max(1, Math.ceil((checkOut - checkIn) / (24 * 60 * 60 * 1000)));
+
+      return {
+        ...b,
+        checkInISO: checkIn.toISOString(),
+        checkOutISO: checkOut.toISOString(),
+        nights,
+        createdAtISO: new Date(b.createdAt).toISOString(),
+      };
+    });
+
+    res.json({ success: true, bookings: enriched });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
