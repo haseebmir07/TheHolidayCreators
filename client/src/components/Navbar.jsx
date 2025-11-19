@@ -60,11 +60,10 @@ const Navbar = () => {
 
   return (
     <nav
-      className={`fixed top-0 left-0 w-full flex items-center justify-between px-4 md:px-16 lg:px-24 xl:px-32 transition-all duration-500 z-50 ${
-        isScrolled
-          ? "bg-white/80 shadow-md text-gray-700 backdrop-blur-lg py-3 md:py-4"
-          : "py-4 md:py-6"
-      }`}
+      className={`fixed top-0 left-0 w-full flex items-center justify-between px-4 md:px-16 lg:px-24 xl:px-32 transition-all duration-500 z-50 ${isScrolled
+        ? "bg-white/80 shadow-md text-gray-700 backdrop-blur-lg py-3 md:py-4"
+        : "py-4 md:py-6"
+        }`}
     >
       <Link to="/">
         <img
@@ -80,26 +79,30 @@ const Navbar = () => {
           <NavLink
             key={index}
             to={navLink.path}
-            className={`group flex flex-col gap-0.5 ${
-              isScrolled ? "text-gray-700" : "text-white"
-            }`}
+            className={`group flex flex-col gap-0.5 ${isScrolled ? "text-gray-700" : "text-white"
+              }`}
             onClick={() => scrollTo(0, 0)}
           >
             {navLink.name}
             <div
-              className={`${
-                isScrolled ? "bg-gray-700" : "bg-white"
-              } h-0.5 w-0 group-hover:w-full transition-all duration-300`}
+              className={`${isScrolled ? "bg-gray-700" : "bg-white"
+                } h-0.5 w-0 group-hover:w-full transition-all duration-300`}
             ></div>
           </NavLink>
         ))}
 
         {/* ----------- Role-based Button ----------- */}
         {isSignedIn && role === "hotelOwner" && (
+          
+          <NavLink to="/owner/manage-hotels" className={`border px-4 py-1 text-sm font-light rounded-full cursor-pointer ${isScrolled ? "text-black" : "text-white"
+              } transition-all`}>
+            Manage Hotels
+          </NavLink>
+        )}
+        {isSignedIn && role === "hotelOwner" && (
           <button
-            className={`border px-4 py-1 text-sm font-light rounded-full cursor-pointer ${
-              isScrolled ? "text-black" : "text-white"
-            } transition-all`}
+            className={`border px-4 py-1 text-sm font-light rounded-full cursor-pointer ${isScrolled ? "text-black" : "text-white"
+              } transition-all`}
             onClick={() => navigate("/owner")}
           >
             Dashboard
@@ -147,9 +150,8 @@ const Navbar = () => {
       </div>
 
       <div
-        className={`fixed top-0 left-0 w-full h-screen bg-white text-base flex flex-col md:hidden items-center justify-center gap-6 font-medium text-gray-800 transition-all duration-500 ${
-          isMenuOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed top-0 left-0 w-full h-screen bg-white text-base flex flex-col md:hidden items-center justify-center gap-6 font-medium text-gray-800 transition-all duration-500 ${isMenuOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
       >
         <button
           className="absolute top-4 right-4"
@@ -168,6 +170,7 @@ const Navbar = () => {
           </NavLink>
         ))}
 
+        
         {isSignedIn && role === "hotelOwner" && (
           <button
             className="border px-4 py-1 text-sm font-light rounded-full cursor-pointer transition-all"
@@ -185,6 +188,7 @@ const Navbar = () => {
             Login
           </button>
         )}
+
       </div>
     </nav>
   );
