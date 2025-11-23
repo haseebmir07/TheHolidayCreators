@@ -15,6 +15,8 @@ import Footer from './components/Footer';
 import MyBookings from './pages/MyBookings';
 import Loader from './components/Loader';
 import SyncUser from './components/SyncUser';   // ✅ Add this line
+import ManageHotels from './pages/hotelOwner/manageHotels';
+import ManageRooms from './pages/hotelOwner/ManageRooms';
 
 const App = () => {
   const isOwnerPath = useLocation().pathname.includes("owner");
@@ -37,6 +39,8 @@ const App = () => {
             <Route index element={<Dashboard />} />
             <Route path="add-room" element={<AddRoom />} />
             <Route path="list-room" element={<ListRoom />} />
+            <Route path="manage-hotels" element={<ManageHotels />} />
+            <Route path="manage-hotels/:hotelId" element={<ManageRooms />} />
           </Route>
         </Routes>
       </div>
