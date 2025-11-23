@@ -10,6 +10,14 @@ const bookingSchema = new Schema(
     checkOutDate: { type: Date, required: true },
     totalPrice: { type: Number, required: true },
     guests: { type: Number, required: true },
+    billingName: {
+      type: String,
+      required: true,
+    },
+    billingPhone: {
+      type: String,
+      required: true,
+    },
     status: {
       type: String,
       enum: ["pending", "confirmed", "cancelled"],

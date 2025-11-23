@@ -36,6 +36,9 @@ function Row({ booking, currency }) {
             <div><span className="text-gray-500">User Name: </span>{booking.user?.username ?? "—"}</div>
             <div><span className="text-gray-500">Email: </span>{booking.user?.email ?? "—"}</div>
             <div><span className="text-gray-500">Guests: </span>{booking.guests ?? "—"}</div>
+            {/* 🔹 New billing details */}
+            <div><span className="text-gray-500">Billing Name: </span>{booking.billingName ?? "—"}</div>
+            <div><span className="text-gray-500">Billing Phone: </span>{booking.billingPhone ?? "—"}</div>
           </div>
           <div className="space-y-1">
             <div><span className="text-gray-500">Check-in: </span>{fmt(booking.checkInISO || booking.checkInDate)}</div>
@@ -76,7 +79,7 @@ export default function OwnerBookingsTable({ currency = "$" }) {
 
   return (
     <div className="rounded-xl border bg-white">
-      <div className="px-6 py-3 border-b font-semibold">Recent Bookings</div>
+      {/* <div className="px-6 py-3 border-b font-semibold">Recent Bookings</div> */}
       <div className="divide-y">
         {rows.map(b => <Row key={b._id} booking={b} currency={currency} />)}
       </div>

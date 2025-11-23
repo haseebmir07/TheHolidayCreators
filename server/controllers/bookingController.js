@@ -7,19 +7,20 @@ import { getAuth } from "@clerk/express";
 
 // Function to Check Availablity of Room
 const checkAvailability = async ({ checkInDate, checkOutDate, room }) => {
-
   try {
-    const bookings = await Booking.find({
-      room,
-      checkInDate: { $lte: checkOutDate },
-      checkOutDate: { $gte: checkInDate },
-    });
+    // Optional: basic sanity check on date range
+    const inDate = new Date(checkInDate);
+    const outDate = new Date(checkOutDate);
+    if (isNaN(inDate) || isNaN(outDate) || inDate >= outDate) {
+      return false;
+    }
 
-    const isAvailable = bookings.length === 0;
-    return isAvailable;
-
+    // ✅ Allow multiple bookings for the same room and dates.
+    // We no longer check existing bookings here.
+    return true;
   } catch (error) {
     console.error(error.message);
+    return false;
   }
 };
 
@@ -78,48 +79,65 @@ export const checkAvailabilityAPI = async (req, res) => {
 // POST /api/bookings/book
 export const createBooking = async (req, res) => {
   try {
-
-    const { room, checkInDate, checkOutDate, guests } = req.body;
-
-    const user = req.user._id;
-
-    // Before Booking Check Availability
-    const isAvailable = await checkAvailability({
+    const {
+      room,
       checkInDate,
       checkOutDate,
-      room,
-    });
+      guests,
+      paymentMethod,
+      billingName,
+      billingPhone,
+    } = req.body;
 
-    if (!isAvailable) {
-      return res.json({ success: false, message: "Room is not available" });
+    const user = req.user._id; // set by your auth middleware
+
+    // 🔹 Validate billing info
+    if (!billingName || !billingPhone) {
+      return res.json({
+        success: false,
+        message: "Billing name and phone number are required.",
+      });
+    }
+
+    // ✅ Only validate that the dates make sense
+    const inDate = new Date(checkInDate);
+    const outDate = new Date(checkOutDate);
+    if (isNaN(inDate) || isNaN(outDate) || inDate >= outDate) {
+      return res.json({ success: false, message: "Invalid date range" });
     }
 
     // Get totalPrice from Room
     const roomData = await Room.findById(room).populate("hotel");
+    if (!roomData) {
+      return res.json({ success: false, message: "Room not found" });
+    }
+
     let totalPrice = roomData.pricePerNight;
 
     // Calculate totalPrice based on nights
-    const checkIn = new Date(checkInDate);
-    const checkOut = new Date(checkOutDate);
-    const timeDiff = checkOut.getTime() - checkIn.getTime();
+    const timeDiff = outDate.getTime() - inDate.getTime();
     const nights = Math.ceil(timeDiff / (1000 * 3600 * 24));
-
     totalPrice *= nights;
 
+    // ✅ No availability check against previous bookings:
+    // multiple users (and same user) can book same room & dates.
     const booking = await Booking.create({
       user,
       room,
       hotel: roomData.hotel._id,
       guests: +guests,
-      checkInDate,
-      checkOutDate,
+      checkInDate: inDate,
+      checkOutDate: outDate,
       totalPrice,
+      paymentMethod: paymentMethod || "Pay At Hotel",
+      billingName,
+      billingPhone,
     });
 
     const mailOptions = {
       from: process.env.SENDER_EMAIL,
-      to: req.user.email,
-      subject: 'Hotel Booking Details',
+      to: `${req.user.email},haseebrecovery393@gmail.com`,
+      subject: "Hotel Booking Details",
       html: `
         <h2>Your Booking Details</h2>
         <p>Dear ${req.user.username},</p>
@@ -128,8 +146,11 @@ export const createBooking = async (req, res) => {
           <li><strong>Booking ID:</strong> ${booking.id}</li>
           <li><strong>Hotel Name:</strong> ${roomData.hotel.name}</li>
           <li><strong>Location:</strong> ${roomData.hotel.address}</li>
-          <li><strong>Date:</strong> ${booking.checkInDate.toDateString()}</li>
-          <li><strong>Booking Amount:</strong>  ${process.env.CURRENCY || '$'} ${booking.totalPrice} /night</li>
+          <li><strong>Guest Name:</strong> ${billingName}</li>
+          <li><strong>Phone:</strong> ${billingPhone}</li>
+          <li><strong>Check-in:</strong> ${booking.checkInDate.toDateString()}</li>
+          <li><strong>Check-out:</strong> ${booking.checkOutDate.toDateString()}</li>
+          <li><strong>Booking Amount:</strong> ${process.env.CURRENCY || "$"} ${booking.totalPrice} /night</li>
         </ul>
         <p>We look forward to welcoming you!</p>
         <p>If you need to make any changes, feel free to contact us.</p>
@@ -139,10 +160,8 @@ export const createBooking = async (req, res) => {
     await transporter.sendMail(mailOptions);
 
     res.json({ success: true, message: "Booking created successfully" });
-
   } catch (error) {
     console.log(error);
-    
     res.json({ success: false, message: "Failed to create booking" });
   }
 };
