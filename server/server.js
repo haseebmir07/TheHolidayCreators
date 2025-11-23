@@ -11,7 +11,7 @@ import clerkWebhooks from "./controllers/clerkWebhooks.js";
 import { cloudinary } from "./configs/cloudinary.js";
 import { stripeWebhooks } from "./controllers/stripeWebhooks.js";
 import ownerRoutes from "./routes/ownerRoutes.js";
-
+import adminRoutes from "./routes/adminRoutes.js";
 
 connectDB();
 cloudinary;
@@ -42,6 +42,7 @@ app.use("/api/hotels", hotelRouter);
 app.use("/api/rooms", roomRouter);
 app.use("/api/bookings", bookingRouter);
 app.use("/api/owner", ownerRoutes);
+app.use("/api/admin", adminRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

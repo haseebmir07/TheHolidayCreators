@@ -92,10 +92,19 @@ const Navbar = () => {
         ))}
 
         {/* ----------- Role-based Button ----------- */}
+        {isSignedIn && role === "admin" && (
+          <button
+            className={`border px-4 py-1 text-sm font-light rounded-full cursor-pointer ${isScrolled ? "text-black" : "text-white"
+              } transition-all`}
+            onClick={() => navigate("/admin")}
+          >
+            Admin
+          </button>
+        )}
         {isSignedIn && role === "hotelOwner" && (
-          
+
           <NavLink to="/owner/manage-hotels" className={`border px-4 py-1 text-sm font-light rounded-full cursor-pointer ${isScrolled ? "text-black" : "text-white"
-              } transition-all`}>
+            } transition-all`}>
             Manage Hotels
           </NavLink>
         )}
@@ -170,7 +179,18 @@ const Navbar = () => {
           </NavLink>
         ))}
 
-        
+        {isSignedIn && role === "admin" && (
+          <button
+            className="border px-4 py-1 text-sm font-light rounded-full cursor-pointer transition-all"
+            onClick={() => {
+              setIsMenuOpen(false);
+              navigate("/admin");
+            }}
+          >
+            Admin
+          </button>
+        )}
+
         {isSignedIn && role === "hotelOwner" && (
           <button
             className="border px-4 py-1 text-sm font-light rounded-full cursor-pointer transition-all"

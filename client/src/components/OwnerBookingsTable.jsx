@@ -1,54 +1,148 @@
-// components/OwnerBookingsTable.jsx
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 function Row({ booking, currency }) {
   const [open, setOpen] = useState(false);
 
-  const fmt = (d) => new Date(d).toLocaleString();
-  const amount = (booking.totalPrice ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0 });
+  const fmt = (d) => {
+    if (!d) return "—";
+    const date = new Date(d);
+    return isNaN(date) ? "—" : date.toLocaleString();
+  };
+
+  const amount = (booking.totalPrice ?? 0).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+  });
+
+  const statusColor =
+    booking.status === "confirmed"
+      ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+      : booking.status === "cancelled"
+      ? "bg-rose-100 text-rose-700 border-rose-200"
+      : "bg-amber-50 text-amber-700 border-amber-200";
 
   return (
-    <div className="border-b">
+    <div className="border-b border-slate-100 last:border-0 bg-white">
       {/* summary row */}
       <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between gap-4 py-3 text-left hover:bg-gray-50"
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
       >
-        <div className="flex items-center gap-3">
-          <span className="inline-block w-5 text-center">{open ? "▾" : "▸"}</span>
-          <div className="font-medium">{booking.user?.username ?? "—"}</div>
-          <div className="text-gray-500">• {booking.room?.roomType ?? "Room"}</div>
-          <div className="text-gray-500">• {booking.hotel?.name ?? "Hotel"}</div>
+        <div className="flex items-center gap-3 min-w-0">
+          <span
+            className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-xs text-slate-500 flex-shrink-0"
+            aria-hidden="true"
+          >
+            {open ? "▾" : "▸"}
+          </span>
+
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900">
+              <span className="truncate max-w-[160px]">
+                {booking.user?.username ?? "—"}
+              </span>
+              <span className="text-slate-400">•</span>
+              <span className="truncate max-w-[140px]">
+                {booking.room?.roomType ?? "Room"}
+              </span>
+              <span className="text-slate-400">•</span>
+              <span className="truncate max-w-[160px]">
+                {booking.hotel?.name ?? "Hotel"}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-slate-500 truncate">
+              {fmt(booking.checkInDate)} – {fmt(booking.checkOutDate)}
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-6">
-          <div className="text-gray-700">{currency} {amount}</div>
-          <span className={`px-2.5 py-1 rounded-full text-xs
-            ${booking.isPaid ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
-            {booking.isPaid ? "Paid" : booking.status ?? "Pending"}
+
+        <div className="flex items-center gap-4 flex-shrink-0">
+          <div className="text-sm font-semibold text-slate-900">
+            {currency} {amount}
+          </div>
+
+          <span
+            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${statusColor}`}
+          >
+            {booking.isPaid ? "Paid" : booking.status ?? "pending"}
           </span>
         </div>
       </button>
 
       {/* detail panel */}
       {open && (
-        <div className="grid md:grid-cols-3 gap-4 px-8 pb-4 text-sm text-gray-700">
-          <div className="space-y-1">
-            <div><span className="text-gray-500">User Name: </span>{booking.user?.username ?? "—"}</div>
-            <div><span className="text-gray-500">Email: </span>{booking.user?.email ?? "—"}</div>
-            <div><span className="text-gray-500">Guests: </span>{booking.guests ?? "—"}</div>
-            {/* 🔹 New billing details */}
-            <div><span className="text-gray-500">Billing Name: </span>{booking.billingName ?? "—"}</div>
-            <div><span className="text-gray-500">Billing Phone: </span>{booking.billingPhone ?? "—"}</div>
-          </div>
-          <div className="space-y-1">
-            <div><span className="text-gray-500">Check-in: </span>{fmt(booking.checkInISO || booking.checkInDate)}</div>
-            <div><span className="text-gray-500">Check-out: </span>{fmt(booking.checkOutISO || booking.checkOutDate)}</div>
-            <div><span className="text-gray-500">Nights: </span>{booking.nights ?? "—"}</div>
-          </div>
-          <div className="space-y-1">
-            <div><span className="text-gray-500">Booked At: </span>{fmt(booking.createdAtISO || booking.createdAt)}</div>
-            <div><span className="text-gray-500">Payment: </span>{booking.isPaid ? "Paid" : "Unpaid"}</div>
-            <div><span className="text-gray-500">Status: </span>{booking.status ?? "pending"}</div>
+        <div className="px-5 pb-4">
+          <div className="mt-1 rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3 text-xs md:text-sm text-slate-700 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+            <div className="grid gap-4 md:grid-cols-3">
+              {/* Column 1: guest info */}
+              <div className="space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-slate-400 font-semibold">
+                  Guest
+                </p>
+                <div>
+                  <span className="text-slate-500">User Name: </span>
+                  <span className="font-medium">
+                    {booking.user?.username ?? "—"}
+                  </span>
+                </div>
+                <div className="truncate">
+                  <span className="text-slate-500">Email: </span>
+                  <span>{booking.user?.email ?? "—"}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Guests: </span>
+                  <span>{booking.guests ?? "—"}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Billing Name: </span>
+                  <span>{booking.billingName ?? "—"}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Billing Phone: </span>
+                  <span>{booking.billingPhone ?? "—"}</span>
+                </div>
+              </div>
+
+              {/* Column 2: stay info */}
+              <div className="space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-slate-400 font-semibold">
+                  Stay
+                </p>
+                <div>
+                  <span className="text-slate-500">Check-in: </span>
+                  <span>{fmt(booking.checkInDate)}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Check-out: </span>
+                  <span>{fmt(booking.checkOutDate)}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Nights: </span>
+                  <span>{booking.nights ?? "—"}</span>
+                </div>
+              </div>
+
+              {/* Column 3: payment info */}
+              <div className="space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-slate-400 font-semibold">
+                  Payment
+                </p>
+                <div>
+                  <span className="text-slate-500">Booked At: </span>
+                  <span>{fmt(booking.createdAt)}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Payment: </span>
+                  <span>{booking.isPaid ? "Paid" : "Unpaid"}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Status: </span>
+                  <span className="capitalize">
+                    {booking.status ?? "pending"}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -56,32 +150,24 @@ function Row({ booking, currency }) {
   );
 }
 
-export default function OwnerBookingsTable({ currency = "$" }) {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/bookings/owner`, { credentials: "include" });
-        const data = await res.json();
-        if (data.success) setRows(data.bookings);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  if (loading) return <div className="p-4 text-gray-500">Loading bookings…</div>;
-  if (!rows.length) return <div className="p-4 text-gray-500">No bookings yet.</div>;
+export default function OwnerBookingsTable({ bookings = [], currency = "$" }) {
+  if (!bookings.length) {
+    return (
+      <div className="mt-4 rounded-xl border border-slate-100 bg-white px-6 py-4 text-sm text-slate-500 shadow-sm">
+        No bookings yet.
+      </div>
+    );
+  }
 
   return (
-    <div className="rounded-xl border bg-white">
-      {/* <div className="px-6 py-3 border-b font-semibold">Recent Bookings</div> */}
-      <div className="divide-y">
-        {rows.map(b => <Row key={b._id} booking={b} currency={currency} />)}
+    <div className="mt-4 rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+      <div className="border-b border-slate-100 bg-slate-50 px-6 py-3 text-sm font-semibold text-slate-800">
+        Recent Bookings
+      </div>
+      <div className="max-h-80 overflow-y-auto">
+        {bookings.map((b) => (
+          <Row key={b._id} booking={b} currency={currency} />
+        ))}
       </div>
     </div>
   );

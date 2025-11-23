@@ -17,6 +17,12 @@ import Loader from './components/Loader';
 import SyncUser from './components/SyncUser';   // ✅ Add this line
 import ManageHotels from './pages/hotelOwner/manageHotels';
 import ManageRooms from './pages/hotelOwner/ManageRooms';
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminHotels from "./pages/admin/AdminHotels";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminBookings from "./pages/admin/AdminBookings";
+
 
 const App = () => {
   const isOwnerPath = useLocation().pathname.includes("owner");
@@ -41,6 +47,12 @@ const App = () => {
             <Route path="list-room" element={<ListRoom />} />
             <Route path="manage-hotels" element={<ManageHotels />} />
             <Route path="manage-hotels/:hotelId" element={<ManageRooms />} />
+          </Route>
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="hotels" element={<AdminHotels />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="bookings" element={<AdminBookings />} />
           </Route>
         </Routes>
       </div>

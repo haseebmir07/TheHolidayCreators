@@ -66,7 +66,10 @@ const Dashboard = () => {
 
       {/* Recent bookings (expandable rows with full details) */}
       <h2 className="text-xl text-blue-950/70 font-medium mb-5">Recent Bookings</h2>
-      <OwnerBookingsTable currency={currency} />
+      <OwnerBookingsTable
+        bookings={dashboardData.bookings || []}
+        currency={currency}
+      />
     </div>
   );
 };
