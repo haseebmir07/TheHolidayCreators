@@ -1,8 +1,30 @@
+// server/controllers/adminController.js
 import Booking from "../models/Booking.js";
 import Hotel from "../models/Hotel.js";
 import Room from "../models/Room.js";
 import User from "../models/User.js";
 import { users } from "@clerk/clerk-sdk-node";
+
+/**
+ * Small helper to parse whatThisPlaceOffers from various client formats:
+ * - JSON stringified array (from multipart FormData)
+ * - actual array (from JSON body)
+ * - comma separated string "Wifi, Pool"
+ */
+function parseOfferings(input) {
+  if (!input && input !== "") return [];
+  if (Array.isArray(input)) return input.map((s) => String(s).trim()).filter(Boolean);
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      if (Array.isArray(parsed)) return parsed.map((s) => String(s).trim()).filter(Boolean);
+    } catch (e) {
+      // not JSON, fall back to comma split
+    }
+    return input.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
 
 /**
  * GET /api/admin/overview
@@ -177,6 +199,10 @@ export const getAdminHotelRooms = async (req, res) => {
 /**
  * PUT /api/admin/rooms/:roomId
  * Update room details (admin)
+ *
+ * This handler will accept:
+ * - JSON body (regular update)
+ * - multipart FormData (files + fields). If FormData contains 'whatThisPlaceOffers' as JSON string, it will be parsed.
  */
 export const updateAdminRoom = async (req, res) => {
     try {
@@ -186,7 +212,40 @@ export const updateAdminRoom = async (req, res) => {
             return res.status(404).json({ success: false, message: "Room not found" });
         }
 
-        Object.assign(room, req.body);
+        // If request body includes whatThisPlaceOffers, parse it safely
+        if (typeof req.body.whatThisPlaceOffers !== "undefined") {
+          room.whatThisPlaceOffers = parseOfferings(req.body.whatThisPlaceOffers);
+        }
+
+        // description
+        if (typeof req.body.description !== "undefined") room.description = req.body.description;
+
+        // amenities: accept stringified JSON or comma-separated
+        if (typeof req.body.amenities !== "undefined") {
+          if (typeof req.body.amenities === "string") {
+            try {
+              room.amenities = JSON.parse(req.body.amenities);
+            } catch (e) {
+              room.amenities = req.body.amenities.split(",").map(s => s.trim()).filter(Boolean);
+            }
+          } else if (Array.isArray(req.body.amenities)) {
+            room.amenities = req.body.amenities;
+          }
+        }
+
+        // non-destructive assign for other simple fields
+        const allowed = ["roomType", "pricePerNight", "isAvailable"];
+        allowed.forEach((field) => {
+          if (typeof req.body[field] !== "undefined") {
+            if (field === "pricePerNight") room[field] = Number(req.body[field]) || 0;
+            else if (field === "isAvailable") room[field] = req.body[field] === "true" || req.body[field] === true;
+            else room[field] = req.body[field];
+          }
+        });
+
+        // NOTE: image handling (if using multipart) is handled in adminRoomsController (createAdminRoomWithImages / updateAdminRoomWithImages).
+        // This UPDATE route (generic) does not attempt to process files here to avoid breaking existing flow.
+
         await room.save();
 
         res.json({ success: true, room });
@@ -202,6 +261,7 @@ export const updateAdminRoom = async (req, res) => {
  */
 export const deleteAdminRoom = async (req, res) => {
     try {
+        // note: route may include hotelId as first param in some routes; we rely on roomId
         const { roomId } = req.params;
         const room = await Room.findById(roomId);
         if (!room) {
@@ -224,12 +284,12 @@ export const deleteAdminRoom = async (req, res) => {
  */
 export const getAdminUsers = async (req, res) => {
     try {
-        const users = await User.find({})
+        const usersList = await User.find({})
             .select("_id username email image role createdAt")
             .sort({ createdAt: -1 })
             .lean();
 
-        res.json({ success: true, users });
+        res.json({ success: true, users: usersList });
     } catch (err) {
         console.error("getAdminUsers error:", err);
         res.status(500).json({ success: false, message: err.message });
@@ -318,17 +378,62 @@ export const cancelBooking = async (req, res) => {
     }
 };
 
+// DELETE /api/admin/hotels/:id/only
+export const deleteHotelOnly = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, message: "Hotel id required" });
+
+    const hotel = await Hotel.findById(id);
+    if (!hotel) return res.status(404).json({ success: false, message: "Hotel not found" });
+
+    // Delete hotel document only
+    await Hotel.deleteOne({ _id: id });
+
+    // Detach hotel reference from rooms that belonged to this hotel.
+    // We set hotel to null so rooms remain in DB but are not linked to a removed hotel.
+    await Room.updateMany({ hotel: id }, { $set: { hotel: null } });
+
+    return res.json({ success: true, message: "Hotel deleted (rooms preserved, hotel reference cleared)" });
+  } catch (err) {
+    console.error("deleteHotelOnly error:", err);
+    return res.status(500).json({ success: false, message: err.message || "Server error" });
+  }
+};
+
+/**
+ * Create admin room (simple JSON fallback) - keep original behavior but accept description & offerings
+ * POST /api/admin/rooms
+ */
 export const createAdminRoom = async (req, res) => {
     try {
-        const { hotelId, roomType, pricePerNight, amenities, images } = req.body;
+        const { hotelId, roomType, pricePerNight, amenities, images, description, whatThisPlaceOffers } = req.body;
         const hotel = await Hotel.findById(hotelId);
         if (!hotel) return res.status(404).json({ success: false, message: "Hotel not found" });
 
-        const newRoom = await Room.create({ hotel: hotelId, roomType, pricePerNight, amenities, images });
+        // parse amenities & offerings safely
+        let amenitiesArr = [];
+        if (amenities) {
+          if (typeof amenities === "string") {
+            try { amenitiesArr = JSON.parse(amenities); } catch (e) { amenitiesArr = amenities.split(",").map(s=>s.trim()).filter(Boolean); }
+          } else if (Array.isArray(amenities)) amenitiesArr = amenities;
+        }
+
+        const offeringsArr = parseOfferings(whatThisPlaceOffers);
+
+        const newRoom = await Room.create({
+            hotel: hotelId,
+            roomType,
+            pricePerNight: Number(pricePerNight) || 0,
+            amenities: amenitiesArr,
+            images: images || [],
+            description: description || "",
+            whatThisPlaceOffers: offeringsArr,
+        });
+
         res.json({ success: true, room: newRoom });
     } catch (err) {
+        console.error("createAdminRoom error:", err);
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
-

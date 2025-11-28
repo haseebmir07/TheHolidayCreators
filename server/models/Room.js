@@ -7,6 +7,7 @@ const roomSchema = new Schema(
     roomType: { type: String, required: true }, // "Single", "Double"
     pricePerNight: { type: Number, required: true },
     description: { type: String, default: "" },
+    whatThisPlaceOffers: { type: [String], default: [] }, 
     amenities: { type: Array, required: true },
     images: [{ type: String }],
     isAvailable: { type: Boolean, default: true },

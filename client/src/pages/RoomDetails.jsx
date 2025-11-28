@@ -1,9 +1,17 @@
-import React, { useEffect, useState } from 'react'
-import { assets, roomCommonData } from '../assets/assets'
-import { useAppContext } from '../context/AppContext';
-import { useParams } from 'react-router-dom';
-import StarRating from '../components/StarRating';
-import toast from 'react-hot-toast';
+import React, { useEffect, useState } from "react";
+import { assets } from "../assets/assets";
+import { useAppContext } from "../context/AppContext";
+import { useParams } from "react-router-dom";
+import StarRating from "../components/StarRating";
+import toast from "react-hot-toast";
+
+/**
+ * RoomDetails.jsx
+ * - Top: large gallery
+ * - Below: two-column content (left scrollable, right sticky booking panel)
+ * - Right booking panel is sticky until footer
+ * - Preserve booking/check availability logic
+ */
 
 const RoomDetails = () => {
   const { id } = useParams();
@@ -11,8 +19,8 @@ const RoomDetails = () => {
 
   const [room, setRoom] = useState(null);
   const [mainImage, setMainImage] = useState(null);
-  const [checkInDate, setCheckInDate] = useState(null);
-  const [checkOutDate, setCheckOutDate] = useState(null);
+  const [checkInDate, setCheckInDate] = useState("");
+  const [checkOutDate, setCheckOutDate] = useState("");
   const [guests, setGuests] = useState(1);
 
   const [isAvailable, setIsAvailable] = useState(false);
@@ -20,238 +28,300 @@ const RoomDetails = () => {
   const [billingName, setBillingName] = useState("");
   const [billingPhone, setBillingPhone] = useState("");
 
-  // Check if the Room is Available
-  const checkAvailability = async () => {
-    try {
-      //  Check is Check-In Date is greater than Check-Out Date
-      if (checkInDate >= checkOutDate) {
-        toast.error('Check-In Date should be less than Check-Out Date')
-        return;
-      }
-
-      const { data } = await axios.post('/api/bookings/check-availability', { room: id, checkInDate, checkOutDate })
-      if (data.success) {
-        if (data.isAvailable) {
-          setIsAvailable(true);
-          setShowBilling(true);          // 🔹 show billing form
-          toast.success('Room is available');
-        } else {
-          setIsAvailable(false);
-          setShowBilling(false);
-          toast.error('Room is not available');
-        }
-      } else {
-        toast.error(data.message)
-      }
-    } catch (error) {
-      toast.error(error.message)
+  // load room from global rooms cache
+  useEffect(() => {
+    const r = rooms.find((x) => x._id === id);
+    if (r) {
+      setRoom(r);
+      setMainImage(r.images?.[0] || null);
     }
-  }
-
-  // onSubmitHandler function to check availability & book the room
-  const onSubmitHandler = async (e) => {
-    try {
-      e.preventDefault();
-      if (!isAvailable) {
-        // First step: check availability
-        return checkAvailability();
-      } else {
-        // Second step: must have billing details
-        if (!billingName.trim() || !billingPhone.trim()) {
-          toast.error("Please enter your name and phone number to continue.");
-          return;
-        }
-
-        const { data } = await axios.post(
-          '/api/bookings/book',
-          {
-            room: id,
-            checkInDate,
-            checkOutDate,
-            guests,
-            paymentMethod: "Pay At Hotel",
-            billingName,
-            billingPhone,
-          },
-          { headers: { Authorization: `Bearer ${await getToken()}` } }
-        );
-
-        if (data.success) {
-          toast.success(data.message)
-          navigate('/my-bookings')
-          scrollTo(0, 0)
-        } else {
-          toast.error(data.message)
-        }
-      }
-    } catch (error) {
-      toast.error(error.message)
-    }
-  }
+  }, [rooms, id]);
 
   useEffect(() => {
-    const room = rooms.find(room => room._id === id);
-    room && setRoom(room);
-    room && setMainImage(room.images[0]);
-  }, [rooms]);
-
-  // reset availability/billing when dates change
-  useEffect(() => {
+    // whenever dates change, reset availability/billing
     setIsAvailable(false);
     setShowBilling(false);
   }, [checkInDate, checkOutDate]);
 
-  return room && (
-    <div className='py-28 md:py-35 px-4 md:px-16 lg:px-24 xl:px-32'>
+  const checkAvailability = async () => {
+    try {
+      if (!checkInDate || !checkOutDate) {
+        toast.error("Select check-in and check-out dates");
+        return;
+      }
+      if (checkInDate >= checkOutDate) {
+        toast.error("Check-in must be before check-out");
+        return;
+      }
 
-      {/* Room Details */}
-      <div className='flex flex-col md:flex-row items-start md:items-center gap-2'>
-        <h1 className='text-3xl md:text-4xl font-playfair'>{room.hotel.name} <span className='font-inter text-sm'>({room.roomType})</span></h1>
-        <p className='text-xs font-inter py-1.5 px-3 text-white bg-orange-500 rounded-full'>20% OFF</p>
-      </div>
-      <div className='flex items-center gap-1 mt-2'>
-        <StarRating />
-        <p className='ml-2'>200+ reviews</p>
-      </div>
-      <div className='flex items-center gap-1 text-gray-500 mt-2'>
-        <img src={assets.locationIcon} alt='location-icon' />
-        <span>{room.hotel.address}</span>
-      </div>
+      const { data } = await axios.post("/api/bookings/check-availability", {
+        room: id,
+        checkInDate,
+        checkOutDate,
+      });
 
-      {/* Room Images */}
-      <div className='flex flex-col lg:flex-row mt-6 gap-6'>
-        <div className='lg:w-1/2 w-full'>
-          <img className='w-full rounded-xl shadow-lg object-cover'
-            src={mainImage} alt='Room Image' />
+      if (data.success) {
+        if (data.isAvailable) {
+          setIsAvailable(true);
+          setShowBilling(true);
+          toast.success("Room is available");
+        } else {
+          setIsAvailable(false);
+          setShowBilling(false);
+          toast.error("Room is not available");
+        }
+      } else {
+        toast.error(data.message || "Availability check failed");
+      }
+    } catch (err) {
+      toast.error(err.message || "Server error");
+    }
+  };
+
+  const onSubmitHandler = async (e) => {
+    try {
+      e.preventDefault();
+      if (!isAvailable) {
+        return checkAvailability();
+      }
+      // now booking
+      if (!billingName.trim() || !billingPhone.trim()) {
+        toast.error("Please enter billing name & phone");
+        return;
+      }
+
+      const { data } = await axios.post(
+        "/api/bookings/book",
+        {
+          room: id,
+          checkInDate,
+          checkOutDate,
+          guests,
+          paymentMethod: "Pay At Hotel",
+          billingName,
+          billingPhone,
+        },
+        { headers: { Authorization: `Bearer ${await getToken()}` } }
+      );
+
+      if (data.success) {
+        toast.success(data.message);
+        navigate("/my-bookings");
+      } else {
+        toast.error(data.message);
+      }
+    } catch (err) {
+      toast.error(err.message || "Booking failed");
+    }
+  };
+
+  if (!room) return null;
+
+  const offers = room.whatThisPlaceOffers || [];
+
+  return (
+    <div className="min-h-screen bg-white">
+      {/* --- TOP: Gallery --- */}
+      <div className="max-w-6xl mx-auto pt-6 px-4 sm:px-6 lg:px-8">
+        <h1 className="text-2xl md:text-3xl font-bold mb-4">{room.hotel?.name || ""}</h1>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* big image on left (spans 2 rows on desktop) */}
+          <div className="lg:col-span-2">
+            <div className="rounded-lg overflow-hidden shadow">
+              <img
+                src={mainImage}
+                alt="main"
+                className="w-full h-[520px] object-cover"
+              />
+            </div>
+
+            {/* thumbnails below big image */}
+            <div className="flex gap-3 mt-3">
+              {room.images?.slice(0, 6).map((img, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setMainImage(img)}
+                  className={`w-20 h-16 overflow-hidden rounded border ${mainImage === img ? "ring-2 ring-orange-400" : "border-gray-200"}`}
+                >
+                  <img src={img} alt={`thumb-${idx}`} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* right side small gallery column for larger screens */}
+          <div className="hidden lg:block">
+            <div className="grid grid-rows-3 gap-3 h-full">
+              {room.images?.slice(1, 7).map((img, idx) => (
+                <button key={idx} onClick={() => setMainImage(img)} className="w-full h-[160px] overflow-hidden rounded border border-gray-200">
+                  <img src={img} alt={`side-${idx}`} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-
-        <div className='grid grid-cols-2 gap-4 lg:w-1/2 w-full'>
-          {room?.images.length > 1 && room.images.map((image, index) => (
-            <img key={index} onClick={() => setMainImage(image)}
-              className={`w-full rounded-xl shadow-md object-cover cursor-pointer ${mainImage === image && 'outline-3 outline-orange-500'}`} src={image} alt='Room Image' />
-          ))}
-        </div>
       </div>
 
-      {/* Room Highlights */}
-      <div className='flex flex-col md:flex-row md:justify-between mt-10'>
-        <div className='flex flex-col'>
-          <h1 className='text-3xl md:text-4xl font-playfair'>Experience Luxury Like Never Before</h1>
-          <div className='flex flex-wrap items-center mt-3 mb-6 gap-4'>
-            {room.amenities.map((item, index) => (
-              <div key={index} className='flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100'>
-                <img src={facilityIcons[item]} alt={item} className='w-5 h-5' />
-                <p className='text-xs'>{item}</p>
+      {/* --- BELOW: content + sticky booking panel --- */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-10">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* LEFT: main content column (spans 2 cols on large screens) */}
+          <div className="lg:col-span-2">
+            <div className="mb-6">
+              <h2 className="text-3xl font-extrabold">{room.roomType}</h2>
+              <div className="flex items-center gap-4 mt-3">
+                <StarRating />
+                <span className="text-sm text-slate-500">{room.reviewsCount || "200+"} reviews</span>
               </div>
-            ))}
+            </div>
+
+            {/* highlights */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="text-xl">+</div>
+                  <div>
+                    <div className="font-medium">Clean & Safe Stay</div>
+                    <div className="text-slate-500 text-sm">A well-maintained and hygienic space just for you.</div>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="text-xl">▲</div>
+                  <div>
+                    <div className="font-medium">Excellent Location</div>
+                    <div className="text-slate-500 text-sm">90% of guests rated the location 5 stars.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="text-xl">—</div>
+                  <div>
+                    <div className="font-medium">Enhanced Cleaning</div>
+                    <div className="text-slate-500 text-sm">This host follows enhanced cleaning standards.</div>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="text-xl">|</div>
+                  <div>
+                    <div className="font-medium">Smooth Check-In</div>
+                    <div className="text-slate-500 text-sm">100% of guests gave check-in a 5-star rating.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <hr className="border-t border-gray-200 my-6" />
+
+            {/* WHAT THIS PLACE OFFERS - two column list */}
+            <div className="mb-6">
+              <h3 className="text-xl font-semibold mb-4">What this place offers</h3>
+
+              {offers.length === 0 ? (
+                <div className="text-sm text-slate-500 mb-4">No offerings listed for this room.</div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                  {offers.map((o, i) => (
+                    <div key={i} className="flex items-start gap-3">
+                      <div className="mt-1">
+                        {facilityIcons?.[o] ? (
+                          <img src={facilityIcons[o]} alt={o} className="w-5 h-5" />
+                        ) : (
+                          <span className="inline-block w-2 h-2 bg-slate-400 rounded-full mt-2" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium">{o}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <hr className="border-t border-gray-200 my-6" />
+
+            {/* Description (banner-like) */}
+            <div className="mb-6">
+              <div className="text-base text-slate-700 leading-7">
+                {room.description || "No description provided for this room."}
+              </div>
+            </div>
+
+            <hr className="border-t border-gray-200 my-6" />
+
+            {/* Host block */}
+            <div className="flex items-center gap-4 py-6">
+              <div className="w-14 h-14 rounded-full bg-pink-500 flex items-center justify-center text-white font-bold">
+                {room.hotel?.owner?.name?.[0] || "H"}
+              </div>
+              <div>
+                <div className="font-medium">Hosted by {room.hotel?.name}</div>
+                <div className="text-sm text-slate-500">200+ reviews</div>
+              </div>
+            </div>
+
+            {/* spacer to make sure content is long enough to scroll */}
+            <div className="h-16" />
+          </div>
+
+          {/* RIGHT: sticky booking panel */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-28">
+              <div className="border rounded-lg p-6 shadow-md bg-white">
+                <div className="text-2xl font-semibold mb-1">₹{room.pricePerNight}</div>
+                <div className="text-sm text-slate-500 mb-3">per night</div>
+
+                <form onSubmit={onSubmitHandler} className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium block mb-1">Check-in</label>
+                    <input type="date" value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} min={new Date().toISOString().split("T")[0]} className="w-full border rounded px-3 py-2" />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium block mb-1">Check-out</label>
+                    <input type="date" value={checkOutDate} onChange={(e) => setCheckOutDate(e.target.value)} min={checkInDate || new Date().toISOString().split("T")[0]} className="w-full border rounded px-3 py-2" />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium block mb-1">Guests</label>
+                    <select value={guests} onChange={(e) => setGuests(e.target.value)} className="w-full border rounded px-3 py-2">
+                      <option value={1}>1 guest</option>
+                      <option value={2}>2 guests</option>
+                      <option value={3}>3 guests</option>
+                      <option value={4}>4 guests</option>
+                    </select>
+                  </div>
+
+                  <button type="submit" className="w-full bg-pink-600 hover:opacity-95 text-white rounded py-3 mt-2">
+                    {isAvailable ? "Book Now" : "Check availability"}
+                  </button>
+
+                  <p className="text-xs text-slate-400 mt-2">You won't be charged yet</p>
+                </form>
+
+                {/* billing form (appears after availability confirmed) */}
+                {showBilling && (
+                  <div className="mt-4">
+                    <div className="text-sm font-medium">Billing info</div>
+                    <input type="text" placeholder="Full name" value={billingName} onChange={(e) => setBillingName(e.target.value)} className="w-full border rounded px-3 py-2 mt-2" />
+                    <input type="tel" placeholder="Phone" value={billingPhone} onChange={(e) => setBillingPhone(e.target.value)} className="w-full border rounded px-3 py-2 mt-2" />
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-        {/* Room Price */}
-        <p className='text-2xl font-medium'>${room.pricePerNight}/night</p>
-      </div>
 
-      {/* CheckIn CheckOut Form */}
-      <form onSubmit={onSubmitHandler} className='flex flex-col md:flex-row items-start md:items-center justify-between bg-white shadow-[0px_0px_20px_rgba(0,0,0,0.15)] p-6 rounded-xl mx-auto mt-16 max-w-6xl'>
-        <div className='flex flex-col flex-wrap md:flex-row items-start md:items-center gap-4 md:gap-10 text-gray-500'>
-          <div className='flex flex-col'>
-            <label htmlFor='checkInDate' className='font-medium'>Check-In</label>
-            <input onChange={(e) => setCheckInDate(e.target.value)} id='checkInDate' type='date' min={new Date().toISOString().split('T')[0]} className='w-full rounded border border-gray-300 px-3 py-2 mt-1.5 outline-none' placeholder='Check-In' required />
-          </div>
-          <div className='w-px h-15 bg-gray-300/70 max-md:hidden'></div>
-          <div className='flex flex-col'>
-            <label htmlFor='checkOutDate' className='font-medium'>Check-Out</label>
-            <input onChange={(e) => setCheckOutDate(e.target.value)} id='checkOutDate' type='date' min={checkInDate} disabled={!checkInDate} className='w-full rounded border border-gray-300 px-3 py-2 mt-1.5 outline-none' placeholder='Check-Out' required />
-          </div>
-          <div className='w-px h-15 bg-gray-300/70 max-md:hidden'></div>
-          <div className='flex flex-col'>
-            <label htmlFor='guests' className='font-medium'>Guests</label>
-            <input onChange={(e) => setGuests(e.target.value)} value={guests} id='guests' type='number' className='max-w-20 rounded border border-gray-300 px-3 py-2 mt-1.5 outline-none' placeholder='0' required />
-          </div>
-        </div>
-
-        <button
-          type='submit'
-          className='bg-primary hover:bg-primary-dull active:scale-95 transition-all text-white rounded-md max-md:w-full max-md:mt-6 md:px-25 py-3 md:py-4 text-base cursor-pointer'
-        >
-          {isAvailable ? "Book Now" : "Check Availability"}
-        </button>
-      </form>
-
-      {/* Billing form (only after availability is confirmed) */}
-      {showBilling && (
-        <div className='max-w-6xl mx-auto mt-6 bg-white rounded-xl shadow-[0px_0px_12px_rgba(0,0,0,0.07)] p-6'>
-          <p className='font-semibold mb-3'>Billing Information</p>
-          <div className='grid md:grid-cols-2 gap-4'>
-            <div>
-              <label className='block text-sm font-medium mb-1'>Full Name</label>
-              <input
-                type='text'
-                value={billingName}
-                onChange={(e) => setBillingName(e.target.value)}
-                placeholder='Your full name'
-                className='w-full border border-gray-300 rounded px-3 py-2 outline-none'
-                required
-              />
-            </div>
-            <div>
-              <label className='block text-sm font-medium mb-1'>Phone Number</label>
-              <input
-                type='tel'
-                value={billingPhone}
-                onChange={(e) => setBillingPhone(e.target.value)}
-                placeholder='Your phone number'
-                className='w-full border border-gray-300 rounded px-3 py-2 outline-none'
-                required
-              />
-            </div>
-          </div>
-          <p className='text-xs text-gray-500 mt-2'>
-            These details will be used for booking confirmation and contact by the property.
-          </p>
-        </div>
-      )}
-
-      {/* Common Specifications */}
-      <div className='mt-25 space-y-4'>
-        {roomCommonData.map((spec, index) => (
-          <div key={index} className='flex items-start gap-2'>
-            <img className='w-6.5' src={spec.icon} alt={`${spec.title}-icon`} />
-            <div>
-              <p className='text-base'>{spec.title}</p>
-              <p className='text-gray-500'>{spec.description}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className='max-w-3xl border-y border-gray-300 my-15 py-10 text-gray-500'>
-        {room.description ? (
-          <p>{room.description}</p>
-        ) : (
-          <p>
-            {`Guests will be allocated on the ground floor according to availability. This room offers a comfortable stay with thoughtfully provided essentials.`}
-          </p>
-        )}
-      </div>
-
-
-      <div className='flex flex-col items-start gap-4'>
-        <div className='flex gap-4'>
-          <img className='h-14 w-14 md:h-18 md:w-18 rounded-full' src={room.hotel.owner.image} alt='Host' />
-          <div>
-            <p className='text-lg md:text-xl'>Hosted by {room.hotel.name}</p>
-            <div className='flex items-center mt-1'>
-              <StarRating />
-              <p className='ml-2'>200+ reviews</p>
-            </div>
-          </div>
-        </div>
-        <button className='px-6 py-2.5 mt-4 rounded text-white bg-primary hover:bg-primary-dull transition-all cursor-pointer'>
-          Contact Now
-        </button>
+        {/* Footer spacer so sticky behaves well */}
+        <div className="h-24" />
       </div>
     </div>
-  )
-}
+  );
+};
 
 export default RoomDetails;

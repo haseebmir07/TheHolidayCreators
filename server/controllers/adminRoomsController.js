@@ -10,7 +10,18 @@ import { cloudinary } from "../configs/cloudinary.js"; // use same cloudinary co
  */
 
 
-
+function parseOfferings(input) {
+  if (!input && input !== "") return [];
+  if (Array.isArray(input)) return input.map((s) => String(s).trim()).filter(Boolean);
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      if (Array.isArray(parsed)) return parsed.map((s) => String(s).trim()).filter(Boolean);
+    } catch (e) {}
+    return input.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
 export const createAdminRoomWithImages = async (req, res) => {
   try {
     // debug: check req.files shape if needed
@@ -68,63 +79,43 @@ export const createAdminRoomWithImages = async (req, res) => {
  */
 export const updateAdminRoomWithImages = async (req, res) => {
   try {
-    // debug:
-    // console.log("updateAdminRoomWithImages - req.files:", Array.isArray(req.files) ? req.files.map(f=>({originalname:f.originalname,hasBuffer:!!f.buffer})) : req.files);
-
     const { hotelId, roomId } = req.params;
     const room = await Room.findById(roomId);
     if (!room) return res.status(404).json({ success: false, message: "Room not found" });
 
-    // Optionally verify the room belongs to hotelId (safety)
-    if (room.hotel && String(room.hotel) !== String(hotelId)) {
-      // This could be a bad request or you may ignore — here we return 400
-      return res.status(400).json({ success: false, message: "Room does not belong to hotel" });
+    // basic fields
+    if (typeof req.body.roomType !== "undefined") room.roomType = req.body.roomType;
+    if (typeof req.body.pricePerNight !== "undefined") room.pricePerNight = Number(req.body.pricePerNight) || 0;
+    if (typeof req.body.isAvailable !== "undefined") room.isAvailable = req.body.isAvailable === "true" || req.body.isAvailable === true;
+
+    // description & offerings
+    if (typeof req.body.description !== "undefined") room.description = req.body.description;
+    if (typeof req.body.whatThisPlaceOffers !== "undefined") room.whatThisPlaceOffers = parseOfferings(req.body.whatThisPlaceOffers);
+
+    // amenities
+    if (typeof req.body.amenities !== "undefined") {
+      if (typeof req.body.amenities === "string") {
+        try { room.amenities = JSON.parse(req.body.amenities); }
+        catch (e) { room.amenities = req.body.amenities.split(",").map(s=>s.trim()).filter(Boolean); }
+      } else if (Array.isArray(req.body.amenities)) room.amenities = req.body.amenities;
     }
 
-    // Update scalar fields from req.body (multipart sends strings)
-    const { roomType, pricePerNight, description, amenities, isAvailable, removeImages } = req.body;
-
-    if (typeof roomType !== "undefined") room.roomType = roomType;
-    if (typeof pricePerNight !== "undefined") room.pricePerNight = Number(pricePerNight) || 0;
-    if (typeof description !== "undefined") room.description = description;
-    if (typeof isAvailable !== "undefined") room.isAvailable = isAvailable === "true" || isAvailable === true;
-    if (typeof amenities !== "undefined") {
-      try {
-        room.amenities = typeof amenities === "string" ? JSON.parse(amenities) : amenities;
-      } catch (e) {
-        // fallback: comma-separated string
-        room.amenities = typeof amenities === "string"
-          ? amenities.split(",").map(s => s.trim()).filter(Boolean)
-          : [];
-      }
+    // removeImages handling
+    if (typeof req.body.removeImages !== "undefined") {
+      let removeArr = [];
+      if (typeof req.body.removeImages === "string") {
+        try { removeArr = JSON.parse(req.body.removeImages); } catch (e) { removeArr = req.body.removeImages.split(",").map(s=>s.trim()).filter(Boolean); }
+      } else if (Array.isArray(req.body.removeImages)) removeArr = req.body.removeImages;
+      if (removeArr.length) room.images = (room.images || []).filter(u => !removeArr.includes(u));
     }
 
-    // Handle removeImages (stringified JSON or CSV)
-    if (removeImages) {
-      let removeArr = removeImages;
-      if (typeof removeImages === "string") {
-        try { removeArr = JSON.parse(removeImages); } catch (e) { removeArr = [removeImages]; }
-      }
-      if (Array.isArray(removeArr) && removeArr.length) {
-        room.images = (room.images || []).filter((u) => !removeArr.includes(u));
-        // OPTIONAL: delete the actual images from Cloudinary here if you track public_ids
-      }
-    }
-
-    // Upload any new files (memory buffer -> data URI)
-    if (req.files && req.files.length) {
-      const uploaded = [];
+    // handle new file uploads (req.files) — adapt to your upload middleware (multer memory)
+    if (req.files && req.files.length > 0) {
       for (const file of req.files) {
-        if (!file) continue;
+        // if you use multer memory storage:
         const dataUri = `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
-        const uploadRes = await cloudinary.uploader.upload(dataUri, {
-          folder: `rooms/${room._id}`,
-          resource_type: "image",
-        });
-        uploaded.push(uploadRes.secure_url);
-      }
-      if (uploaded.length) {
-        room.images = [...(room.images || []), ...uploaded];
+        const r = await cloudinary.uploader.upload(dataUri, { folder: "rooms" });
+        if (r?.secure_url) room.images.push(r.secure_url);
       }
     }
 
@@ -132,6 +123,6 @@ export const updateAdminRoomWithImages = async (req, res) => {
     return res.json({ success: true, room });
   } catch (err) {
     console.error("updateAdminRoomWithImages error:", err);
-    return res.status(500).json({ success: false, message: err.message || "Server error" });
+    return res.status(500).json({ success: false, message: err.message });
   }
 };

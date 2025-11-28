@@ -5,6 +5,24 @@ import { getAuth } from "@clerk/express";
 import { cloudinary } from "../configs/cloudinary.js";
 
 /**
+ * parseOfferings helper (same behavior as adminController)
+ */
+function parseOfferings(input) {
+  if (!input && input !== "") return [];
+  if (Array.isArray(input)) return input.map((s) => String(s).trim()).filter(Boolean);
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      if (Array.isArray(parsed)) return parsed.map((s) => String(s).trim()).filter(Boolean);
+    } catch (e) {
+      // fallback to comma-split
+    }
+    return input.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+/**
  * GET /api/owner/hotels
  * List hotels for signed-in owner
  */
@@ -109,6 +127,10 @@ export const getHotelRooms = async (req, res) => {
 /**
  * POST /api/owner/hotels/:id/rooms
  * Add room to hotel
+ *
+ * Accepts multipart upload (req.files) with images; also accepts fields:
+ * roomType, pricePerNight, isAvailable, amenities (JSON string or omitted),
+ * description (string), whatThisPlaceOffers (JSON-string or comma list)
  */
 export const addRoomToHotel = async (req, res) => {
   try {
@@ -125,22 +147,22 @@ export const addRoomToHotel = async (req, res) => {
     // amenities may be sent as JSON string
     let amenities = [];
     if (req.body.amenities) {
-      try { amenities = JSON.parse(req.body.amenities); } catch (e) { amenities = []; }
+      try { amenities = JSON.parse(req.body.amenities); } catch (e) { amenities = req.body.amenities.split(",").map(s => s.trim()).filter(Boolean); }
     }
 
-    // Upload images to Cloudinary
+    // parse description & whatThisPlaceOffers
+    const description = typeof req.body.description !== "undefined" ? req.body.description : "";
+    const offerings = parseOfferings(req.body.whatThisPlaceOffers);
+
+    // Upload images to Cloudinary (preserve your existing flow using buffer => dataURI)
     const uploadedImages = [];
     if (req.files && req.files.length > 0) {
-      // Upload sequentially (simple) — ok for small number of files
       for (const file of req.files) {
-        // convert buffer -> data URI
         const dataUri = `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
-
         const uploadRes = await cloudinary.uploader.upload(dataUri, {
-          folder: "rooms", // optional folder
+          folder: "rooms",
           resource_type: "image",
         });
-
         uploadedImages.push(uploadRes.secure_url);
       }
     }
@@ -152,6 +174,8 @@ export const addRoomToHotel = async (req, res) => {
       amenities,
       images: uploadedImages,
       isAvailable: isAvailable === "true" || isAvailable === true,
+      description,
+      whatThisPlaceOffers: offerings,
     });
 
     return res.json({ success: true, room });
@@ -164,6 +188,8 @@ export const addRoomToHotel = async (req, res) => {
 /**
  * PUT /api/owner/rooms/:roomId
  * Update room
+ *
+ * Accepts JSON or multipart. Will parse description and whatThisPlaceOffers.
  */
 export const updateRoom = async (req, res) => {
   try {
@@ -175,9 +201,56 @@ export const updateRoom = async (req, res) => {
     const hotel = await Hotel.findById(room.hotel);
     if (!hotel || String(hotel.owner) !== userId) return res.status(403).json({ success:false, message:"Forbidden" });
 
-    Object.assign(room, req.body);
-    await room.save();
+    // parse and set description if present
+    if (typeof req.body.description !== "undefined") room.description = req.body.description;
 
+    // parse offerings if present
+    if (typeof req.body.whatThisPlaceOffers !== "undefined") {
+      room.whatThisPlaceOffers = parseOfferings(req.body.whatThisPlaceOffers);
+    }
+
+    // amenities handling
+    if (typeof req.body.amenities !== "undefined") {
+      if (typeof req.body.amenities === "string") {
+        try { room.amenities = JSON.parse(req.body.amenities); }
+        catch (e) { room.amenities = req.body.amenities.split(",").map(s=>s.trim()).filter(Boolean); }
+      } else if (Array.isArray(req.body.amenities)) room.amenities = req.body.amenities;
+    }
+
+    // other small fields
+    const allowed = ["roomType", "pricePerNight", "isAvailable"];
+    allowed.forEach(f => {
+      if (typeof req.body[f] !== "undefined") {
+        if (f === "pricePerNight") room[f] = Number(req.body[f]) || 0;
+        else if (f === "isAvailable") room[f] = req.body[f] === "true" || req.body[f] === true;
+        else room[f] = req.body[f];
+      }
+    });
+
+    // removeImages handling (stringified JSON or comma list)
+    if (typeof req.body.removeImages !== "undefined") {
+      let removeArr = [];
+      if (typeof req.body.removeImages === "string") {
+        try { removeArr = JSON.parse(req.body.removeImages); } catch (e) { removeArr = req.body.removeImages.split(",").map(s=>s.trim()).filter(Boolean); }
+      } else if (Array.isArray(req.body.removeImages)) removeArr = req.body.removeImages;
+      if (removeArr.length) room.images = (room.images || []).filter(u => !removeArr.includes(u));
+    }
+
+    // new file uploads (if any)
+    if (req.files && req.files.length > 0) {
+      const urls = [];
+      for (const file of req.files) {
+        const dataUri = `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+        const uploadRes = await cloudinary.uploader.upload(dataUri, {
+          folder: "rooms",
+          resource_type: "image",
+        });
+        urls.push(uploadRes.secure_url);
+      }
+      room.images = [...(room.images || []), ...urls];
+    }
+
+    await room.save();
     res.json({ success: true, room });
   } catch (err) {
     console.error(err);

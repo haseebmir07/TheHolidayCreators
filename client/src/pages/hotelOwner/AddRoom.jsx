@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef } from "react";
-import { assets } from "../../assets/assets";
 import Title from "../../components/Title";
 import toast from "react-hot-toast";
 import { useAppContext } from "../../context/AppContext";
@@ -28,12 +27,11 @@ const AddRoom = () => {
     },
     isAvailable: true,
     description: "",
+    whatThisPlaceOffers: "",
   });
 
-  // a ref to hold last auto-generated description to avoid overwriting user edits
   const lastAutoDescRef = useRef("");
 
-  // generate suggestion based on roomType and selectedHotel name
   const generateSuggestedDescription = (roomType, hotelId) => {
     const hotel = hotels.find((h) => h._id === hotelId);
     const hotelName = hotel?.name || "this hotel";
@@ -41,10 +39,8 @@ const AddRoom = () => {
     return `${roomType} at ${hotelName} — comfy, clean, and thoughtfully furnished. Perfect for travellers looking for value and convenience.`;
   };
 
-  // when roomType or selectedHotel changes, update description only if user hasn't edited it
   useEffect(() => {
     const suggested = generateSuggestedDescription(inputs.roomType, selectedHotel);
-    // If current description equals last auto-suggestion OR is empty -> overwrite with new suggestion
     if (!inputs.description || inputs.description === lastAutoDescRef.current) {
       setInputs((prev) => ({ ...prev, description: suggested }));
       lastAutoDescRef.current = suggested;
@@ -52,7 +48,6 @@ const AddRoom = () => {
     // eslint-disable-next-line
   }, [inputs.roomType, selectedHotel, hotels.length]);
 
-  // load owner's hotels
   useEffect(() => {
     (async () => {
       setLoadingHotels(true);
@@ -71,13 +66,13 @@ const AddRoom = () => {
         console.error("fetch owner hotels:", err);
         toast.error("Failed to load your hotels");
       } finally {
+        setLoadingHospitals && setLoadingHotels(false);
         setLoadingHotels(false);
       }
     })();
     // eslint-disable-next-line
   }, []);
 
-  // helper to toggle amenity
   const toggleAmenity = (key) => {
     setInputs((prev) => ({
       ...prev,
@@ -85,10 +80,7 @@ const AddRoom = () => {
     }));
   };
 
-  // file change
-  const onFileChange = (slot, file) => {
-    setImages((prev) => ({ ...prev, [slot]: file }));
-  };
+  const onFileChange = (slot, file) => setImages((prev) => ({ ...prev, [slot]: file }));
 
   const onSubmitHandler = async (e) => {
     e.preventDefault();
@@ -103,7 +95,6 @@ const AddRoom = () => {
       return;
     }
 
-    // require at least one image
     if (!Object.values(images).some((img) => img)) {
       toast.error("Please upload at least one image.");
       return;
@@ -121,26 +112,18 @@ const AddRoom = () => {
       formData.append("amenities", JSON.stringify(amenitiesArr));
 
       formData.append("description", inputs.description || "");
+      formData.append("whatThisPlaceOffers", inputs.whatThisPlaceOffers || "");
 
       Object.keys(images).forEach((key) => {
         if (images[key]) formData.append("images", images[key]);
       });
 
-      // POST to owner endpoint so the room belongs to the chosen hotel
-      const { data } = await axios.post(
-        `/api/owner/hotels/${selectedHotel}/rooms`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            // let axios set Content-Type (multipart boundary)
-          },
-        }
-      );
+      const { data } = await axios.post(`/api/owner/hotels/${selectedHotel}/rooms`, formData, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       if (data.success) {
         toast.success("Room added successfully");
-        // redirect to manage rooms for that hotel
         navigate(`/owner/manage-hotels/${selectedHotel}`);
       } else {
         toast.error(data.message || "Failed to add room");
@@ -154,12 +137,12 @@ const AddRoom = () => {
   };
 
   return (
-    <form onSubmit={onSubmitHandler} className="max-w-3xl p-6">
+    <form onSubmit={onSubmitHandler} className="max-w-3xl p-6 mx-auto">
       <Title
         align="left"
         font="outfit"
         title="Add Room"
-        subTitle="Fill in the details carefully and accurate room details, pricing, and amenities, to enhance the user booking experience."
+        subTitle="Fill in accurate room details, pricing, and amenities to enhance the booking experience."
       />
 
       {/* Hotel select */}
@@ -179,7 +162,7 @@ const AddRoom = () => {
         </select>
       </div>
 
-      {/* Image uploads (4 slots) */}
+      {/* Image uploads */}
       <div className="mb-4">
         <p className="text-gray-800">Images</p>
         <div className="flex gap-3 mt-2">
@@ -221,17 +204,17 @@ const AddRoom = () => {
         </div>
       </div>
 
-      {/* Amenities toggles */}
+      {/* Amenities */}
       <div className="mt-4 flex gap-2 flex-wrap">
         {Object.keys(inputs.amenities).map((a) => (
-          <label key={a} className="flex items-center gap-2 px-3 py-2 rounded bg-gray-100">
+          <label key={a} className="flex items-center gap-2 px-3 py-2 rounded bg-gray-100 cursor-pointer">
             <input type="checkbox" checked={inputs.amenities[a]} onChange={() => toggleAmenity(a)} />
             <span className="text-sm">{a}</span>
           </label>
         ))}
       </div>
 
-      {/* Description field */}
+      {/* Description */}
       <div className="mt-4">
         <p className="text-gray-800">Description</p>
         <textarea
@@ -239,17 +222,25 @@ const AddRoom = () => {
           placeholder="Write a custom description for this room..."
           value={inputs.description}
           onChange={(e) => {
-            // when user edits manually, we shouldn't overwrite next auto-suggest
-            lastAutoDescRef.current = ""; // clear last auto so future generator can overwrite if desired
+            lastAutoDescRef.current = "";
             setInputs((prev) => ({ ...prev, description: e.target.value }));
           }}
         />
-        <p className="text-xs text-slate-400 mt-1">
-          Tip: we’ve suggested a description above — feel free to edit it to make this room unique.
-        </p>
       </div>
 
-      {/* Submit */}
+      {/* What this place offers */}
+      <div className="mt-4">
+        <p className="text-gray-800">What this place offers</p>
+        <p className="text-xs text-slate-400 mb-2">Comma-separated. e.g. "Wifi, Kitchen, Mountain view"</p>
+        <input
+          type="text"
+          value={inputs.whatThisPlaceOffers}
+          onChange={(e) => setInputs((prev) => ({ ...prev, whatThisPlaceOffers: e.target.value }))}
+          placeholder="Wifi, Kitchen, Free parking..."
+          className="border border-gray-300 rounded p-2 w-full mt-1"
+        />
+      </div>
+
       <button className="bg-primary text-white px-8 py-2 rounded mt-8 cursor-pointer" disabled={loading}>
         {loading ? "Adding..." : "Add Room"}
       </button>

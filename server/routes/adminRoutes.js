@@ -8,15 +8,17 @@ import {
   getAdminHotels,
   updateAdminHotel,
   deleteAdminHotel,
+  // NEW: deleteHotelOnly should be exported by your adminController.js
+  deleteHotelOnly,
   getAdminHotelRooms,
   updateAdminRoom,
   deleteAdminRoom,
   getAdminUsers,
   updateAdminUserRole,
   deleteAdminUser,
-    setBookingPaid,
-    cancelBooking,
-    createAdminRoom,
+  setBookingPaid,
+  cancelBooking,
+  createAdminRoom,
 } from "../controllers/adminController.js";
 
 
@@ -47,6 +49,12 @@ router.patch("/bookings/:id", updateAdminBooking);
 
 // Hotels
 router.get("/hotels", getAdminHotels);
+
+// NEW: hotel-only delete endpoint (doesn't cascade-delete rooms/bookings)
+// DELETE /api/admin/hotels/:id/only
+router.delete("/hotels/:id/only", deleteHotelOnly);
+
+// existing delete that may remove hotel + related data (keeps for backward compatibility)
 router.delete("/hotels/:hotelId/rooms/:roomId", deleteAdminRoom);
 router.get("/hotels/:id/rooms", getAdminHotelRooms);
 
