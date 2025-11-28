@@ -8,6 +8,40 @@ import { cloudinary } from "../configs/cloudinary.js"; // use same cloudinary co
  * Create room for hotel with multipart images (field name: images)
  * Route should be mounted with multer memoryStorage: upload.array('images')
  */
+// helper inside controller file
+function normalizeOffers(input) {
+  // Accepts:
+  // - JSON string of array of objects [{title, subtitle, iconKey}]
+  // - JSON string of array of strings ["Wifi","Kitchen"]
+  // - comma-separated string "Wifi, Kitchen"
+  // - already an array (strings or objects)
+  if (!input) return [];
+
+  // if array already
+  if (Array.isArray(input)) {
+    return input.map((it) => {
+      if (!it) return null;
+      if (typeof it === "string") return { title: it.trim(), subtitle: "", iconKey: "" };
+      // object
+      return { title: (it.title || "").toString().trim(), subtitle: (it.subtitle || "").toString().trim(), iconKey: (it.iconKey || "").toString().trim() };
+    }).filter(Boolean);
+  }
+
+  // if JSON string
+  if (typeof input === "string") {
+    // try parse JSON first
+    try {
+      const parsed = JSON.parse(input);
+      if (Array.isArray(parsed)) return normalizeOffers(parsed);
+    } catch (e) {
+      // not JSON -> treat as comma-separated string
+      const arr = input.split(",").map(s => s.trim()).filter(Boolean);
+      return arr.map(t => ({ title: t, subtitle: "", iconKey: "" }));
+    }
+  }
+
+  return [];
+}
 
 
 function parseOfferings(input) {
@@ -90,7 +124,7 @@ export const updateAdminRoomWithImages = async (req, res) => {
 
     // description & offerings
     if (typeof req.body.description !== "undefined") room.description = req.body.description;
-    if (typeof req.body.whatThisPlaceOffers !== "undefined") room.whatThisPlaceOffers = parseOfferings(req.body.whatThisPlaceOffers);
+    if (typeof req.body.whatThisPlaceOffers !== "undefined") room.whatThisPlaceOffers = normalizeOffers(req.body.whatThisPlaceOffers);
 
     // amenities
     if (typeof req.body.amenities !== "undefined") {

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useAppContext } from "../../context/AppContext";
 import Title from "../../components/Title";
 import toast from "react-hot-toast";
-
+import OffersEditor from "../../components/OffersEditor";
 /**
  * AdminHotels.jsx — combined admin hotels + rooms UI
  * - supports add room (description + whatThisPlaceOffers + images)
@@ -26,7 +26,7 @@ const AdminHotels = () => {
     amenitiesText: "",
     isAvailable: true,
     description: "",
-    whatThisPlaceOffers: "",
+    whatThisPlaceOffers: [],
     images: { 1: null, 2: null, 3: null, 4: null },
   });
   const [savingNewRoom, setSavingNewRoom] = useState(false);
@@ -104,7 +104,7 @@ const AdminHotels = () => {
       amenitiesText: "",
       isAvailable: true,
       description: "",
-      whatThisPlaceOffers: "",
+      whatThisPlaceOffers: [],
       images: { 1: null, 2: null, 3: null, 4: null },
     });
   };
@@ -133,7 +133,7 @@ const AdminHotels = () => {
       formData.append("pricePerNight", Number(newRoomDraft.pricePerNight) || 0);
       formData.append("isAvailable", newRoomDraft.isAvailable ? "true" : "false");
       formData.append("description", newRoomDraft.description || "");
-      formData.append("whatThisPlaceOffers", newRoomDraft.whatThisPlaceOffers || "");
+      formData.append("whatThisPlaceOffers", JSON.stringify(newRoomDraft.whatThisPlaceOffers || []));
       const amenities = newRoomDraft.amenitiesText.split(",").map((s) => s.trim()).filter(Boolean);
       formData.append("amenities", JSON.stringify(amenities));
       Object.keys(newRoomDraft.images).forEach((k) => {
@@ -161,7 +161,7 @@ const AdminHotels = () => {
             pricePerNight: Number(newRoomDraft.pricePerNight) || 0,
             isAvailable: !!newRoomDraft.isAvailable,
             description: newRoomDraft.description || "",
-            whatThisPlaceOffers: newRoomDraft.whatThisPlaceOffers || "",
+            whatThisPlaceOffers: newRoomDraft.whatThisPlaceOffers || [],
             amenities,
           };
           const { data: createData } = await axios.post(fallbackUrl, payload, { headers: { Authorization: `Bearer ${token}` } });
@@ -208,7 +208,16 @@ const AdminHotels = () => {
         amenitiesText: (room.amenities || []).join(", "),
         isAvailable: !!room.isAvailable,
         description: room.description || "",
-        whatThisPlaceOffers: (room.whatThisPlaceOffers || []).join(", "),
+        whatThisPlaceOffers: (room.whatThisPlaceOffers || []).map((o) => {
+          // if stored as string -> convert to object; if stored as object use its fields
+          if (!o) return { title: "", subtitle: "", iconKey: "" };
+          if (typeof o === "string") return { title: o, subtitle: "", iconKey: "" };
+          return {
+            title: (o.title || "").toString(),
+            subtitle: (o.subtitle || "").toString(),
+            iconKey: (o.iconKey || "").toString(),
+          };
+        }),
         existingImages: Array.isArray(room.images) ? [...room.images] : [],
         newImages: { 1: null, 2: null, 3: null, 4: null },
         removeImages: [],
@@ -243,7 +252,7 @@ const AdminHotels = () => {
       formData.append("pricePerNight", Number(draft.pricePerNight) || 0);
       formData.append("isAvailable", draft.isAvailable ? "true" : "false");
       formData.append("description", draft.description || "");
-      formData.append("whatThisPlaceOffers", draft.whatThisPlaceOffers || "");
+      formData.append("whatThisPlaceOffers", JSON.stringify(draft.whatThisPlaceOffers || []));
       const amenities = draft.amenitiesText.split(",").map((s) => s.trim()).filter(Boolean);
       formData.append("amenities", JSON.stringify(amenities));
 
@@ -359,10 +368,14 @@ const AdminHotels = () => {
               <textarea value={editing.draft.description} onChange={(e) => setEditing((prev) => ({ ...prev, draft: { ...prev.draft, description: e.target.value } }))} className="border rounded px-2 py-1 text-sm w-full min-h-[80px]" />
             </div>
 
-            <div>
-              <p className="text-xs text-slate-600">What this place offers (comma separated)</p>
-              <input type="text" value={editing.draft.whatThisPlaceOffers} onChange={(e) => setEditing((prev) => ({ ...prev, draft: { ...prev.draft, whatThisPlaceOffers: e.target.value } }))} className="border rounded px-2 py-1 text-sm w-full" />
+            <div className="mt-2">
+              <p className="text-[11px] uppercase text-slate-400">What this place offers</p>
+              <OffersEditor
+                value={editing.draft.whatThisPlaceOffers}
+                onChange={(val) => setEditing((prev) => ({ ...prev, draft: { ...prev.draft, whatThisPlaceOffers: val } }))}
+              />
             </div>
+
 
             <div>
               <p className="text-xs text-slate-600">Amenities (comma separated)</p>
@@ -460,11 +473,15 @@ const AdminHotels = () => {
                         <textarea value={newRoomDraft.description} onChange={(e) => setNewRoomDraft((p) => ({ ...p, description: e.target.value }))} className="border rounded px-2 py-1 text-xs w-full min-h-[70px]" />
                       </div>
 
-                      <div className="mt-2">
-                        <p className="text-[11px] uppercase text-slate-400">What this place offers</p>
-                        <input type="text" value={newRoomDraft.whatThisPlaceOffers} onChange={(e) => setNewRoomDraft((p) => ({ ...p, whatThisPlaceOffers: e.target.value }))} placeholder="Wifi, Kitchen, Free parking..." className="border rounded px-2 py-1 text-xs w-full" />
-                        <p className="text-xs text-slate-400 mt-1">Comma separated list. These will show on the room page.</p>
+                      <div>
+                        <p className="text-xs text-slate-600">What this place offers</p>
+                        <OffersEditor
+                          value={newRoomDraft.whatThisPlaceOffers}
+                          onChange={(val) => setNewRoomDraft((p) => ({ ...p, whatThisPlaceOffers: val }))}
+                        />
                       </div>
+
+
 
                       <div className="mt-2">
                         <p className="text-[11px] uppercase text-slate-400">Amenities</p>

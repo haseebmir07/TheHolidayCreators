@@ -9,8 +9,7 @@ import toast from "react-hot-toast";
  * RoomDetails.jsx
  * - Top: large gallery
  * - Below: two-column content (left scrollable, right sticky booking panel)
- * - Right booking panel is sticky until footer
- * - Preserve booking/check availability logic
+ * - "What this place offers" items act like FAQ entries (click title to expand subtitle)
  */
 
 const RoomDetails = () => {
@@ -28,6 +27,9 @@ const RoomDetails = () => {
   const [billingName, setBillingName] = useState("");
   const [billingPhone, setBillingPhone] = useState("");
 
+  // FAQ open state for offers
+  const [openOffers, setOpenOffers] = useState(new Set());
+
   // load room from global rooms cache
   useEffect(() => {
     const r = rooms.find((x) => x._id === id);
@@ -42,6 +44,15 @@ const RoomDetails = () => {
     setIsAvailable(false);
     setShowBilling(false);
   }, [checkInDate, checkOutDate]);
+
+  const toggleOffer = (index) => {
+    setOpenOffers((prev) => {
+      const copy = new Set(prev);
+      if (copy.has(index)) copy.delete(index);
+      else copy.add(index);
+      return copy;
+    });
+  };
 
   const checkAvailability = async () => {
     try {
@@ -129,11 +140,7 @@ const RoomDetails = () => {
           {/* big image on left (spans 2 rows on desktop) */}
           <div className="lg:col-span-2">
             <div className="rounded-lg overflow-hidden shadow">
-              <img
-                src={mainImage}
-                alt="main"
-                className="w-full h-[520px] object-cover"
-              />
+              <img src={mainImage} alt="main" className="w-full h-[520px] object-cover" />
             </div>
 
             {/* thumbnails below big image */}
@@ -217,7 +224,7 @@ const RoomDetails = () => {
 
             <hr className="border-t border-gray-200 my-6" />
 
-            {/* WHAT THIS PLACE OFFERS - two column list */}
+            {/* WHAT THIS PLACE OFFERS - two column list with FAQ toggle */}
             <div className="mb-6">
               <h3 className="text-xl font-semibold mb-4">What this place offers</h3>
 
@@ -225,20 +232,63 @@ const RoomDetails = () => {
                 <div className="text-sm text-slate-500 mb-4">No offerings listed for this room.</div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                  {offers.map((o, i) => (
-                    <div key={i} className="flex items-start gap-3">
-                      <div className="mt-1">
-                        {facilityIcons?.[o] ? (
-                          <img src={facilityIcons[o]} alt={o} className="w-5 h-5" />
-                        ) : (
-                          <span className="inline-block w-2 h-2 bg-slate-400 rounded-full mt-2" />
-                        )}
+                  {offers.map((o, i) => {
+                    // support both string or object
+                    const isString = typeof o === "string";
+                    const title = isString ? o : (o.title || "");
+                    const subtitle = isString ? "" : (o.subtitle || "");
+                    const iconKey = isString ? title : (o.iconKey || title);
+
+                    const isOpen = openOffers.has(i);
+
+                    return (
+                      <div key={i} className="flex flex-col gap-2">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-1">
+                            {facilityIcons?.[iconKey] ? (
+                              <img src={facilityIcons[iconKey]} alt={title} className="w-5 h-5" />
+                            ) : (
+                              <span className="inline-block w-2 h-2 bg-slate-400 rounded-full mt-2" />
+                            )}
+                          </div>
+
+                          <div className="flex-1">
+                            {/* Title button */}
+                            <button
+                              type="button"
+                              onClick={() => toggleOffer(i)}
+                              aria-expanded={isOpen}
+                              className="w-full text-left flex items-center justify-between gap-3"
+                            >
+                              <div className="text-sm font-semibold text-slate-800">{title}</div>
+                              {/* small chevron */}
+                              <svg
+                                className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : "rotate-0"}`}
+                                viewBox="0 0 20 20"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                                aria-hidden="true"
+                              >
+                                <path d="M6 8L10 12L14 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </button>
+
+                            {/* Subtitle / collapsible description */}
+                            {subtitle ? (
+                              <div
+                                className={`mt-2 text-xs text-slate-500 overflow-hidden transition-all ${
+                                  isOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+                                }`}
+                                aria-hidden={!isOpen}
+                              >
+                                {subtitle}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-sm font-medium">{o}</div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

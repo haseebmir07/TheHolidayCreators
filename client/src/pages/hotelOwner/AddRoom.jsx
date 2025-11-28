@@ -3,6 +3,7 @@ import Title from "../../components/Title";
 import toast from "react-hot-toast";
 import { useAppContext } from "../../context/AppContext";
 import { useNavigate } from "react-router-dom";
+import OffersEditor from "../../components/OffersEditor";
 
 const AddRoom = () => {
   const { axios, getToken } = useAppContext();
@@ -27,7 +28,7 @@ const AddRoom = () => {
     },
     isAvailable: true,
     description: "",
-    whatThisPlaceOffers: "",
+    whatThisPlaceOffers: [],
   });
 
   const lastAutoDescRef = useRef("");
@@ -66,7 +67,7 @@ const AddRoom = () => {
         console.error("fetch owner hotels:", err);
         toast.error("Failed to load your hotels");
       } finally {
-        setLoadingHospitals && setLoadingHotels(false);
+        // setLoadingHospitals && setLoadingHotels(false);
         setLoadingHotels(false);
       }
     })();
@@ -112,7 +113,8 @@ const AddRoom = () => {
       formData.append("amenities", JSON.stringify(amenitiesArr));
 
       formData.append("description", inputs.description || "");
-      formData.append("whatThisPlaceOffers", inputs.whatThisPlaceOffers || "");
+      formData.append("whatThisPlaceOffers", JSON.stringify(inputs.whatThisPlaceOffers || []));
+
 
       Object.keys(images).forEach((key) => {
         if (images[key]) formData.append("images", images[key]);
@@ -231,13 +233,11 @@ const AddRoom = () => {
       {/* What this place offers */}
       <div className="mt-4">
         <p className="text-gray-800">What this place offers</p>
-        <p className="text-xs text-slate-400 mb-2">Comma-separated. e.g. "Wifi, Kitchen, Mountain view"</p>
-        <input
-          type="text"
+        <p className="text-xs text-slate-400 mb-2">Add individual offerings (title + optional subtitle).</p>
+
+        <OffersEditor
           value={inputs.whatThisPlaceOffers}
-          onChange={(e) => setInputs((prev) => ({ ...prev, whatThisPlaceOffers: e.target.value }))}
-          placeholder="Wifi, Kitchen, Free parking..."
-          className="border border-gray-300 rounded p-2 w-full mt-1"
+          onChange={(val) => setInputs((prev) => ({ ...prev, whatThisPlaceOffers: val }))}
         />
       </div>
 
