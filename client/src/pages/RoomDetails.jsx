@@ -10,6 +10,9 @@ import toast from "react-hot-toast";
  * - Top: large gallery
  * - Below: two-column content (left scrollable, right sticky booking panel)
  * - "What this place offers" items act like FAQ entries (click title to expand subtitle)
+ *
+ * NOTE: added top padding so content does not overlap fixed navbar,
+ * and increased sticky offset for booking panel so it stays below navbar.
  */
 
 const RoomDetails = () => {
@@ -131,7 +134,9 @@ const RoomDetails = () => {
   const offers = room.whatThisPlaceOffers || [];
 
   return (
-    <div className="min-h-screen bg-white">
+    // Add top padding so content doesn't overlap the fixed navbar.
+    // pt-20 for small screens and pt-28 for md+ increase the offset if your navbar is taller.
+    <div className="min-h-screen bg-white pt-20 md:pt-16">
       {/* --- TOP: Gallery --- */}
       <div className="max-w-6xl mx-auto pt-6 px-4 sm:px-6 lg:px-8">
         <h1 className="text-2xl md:text-3xl font-bold mb-4">{room.hotel?.name || ""}</h1>
@@ -321,7 +326,8 @@ const RoomDetails = () => {
 
           {/* RIGHT: sticky booking panel */}
           <div className="lg:col-span-1">
-            <div className="sticky top-28">
+            {/* increased top offset so the panel starts below the navbar on most screen sizes */}
+            <div className="sticky top-32 md:top-28">
               <div className="border rounded-lg p-6 shadow-md bg-white">
                 <div className="text-2xl font-semibold mb-1">₹{room.pricePerNight}</div>
                 <div className="text-sm text-slate-500 mb-3">per night</div>
