@@ -1,190 +1,128 @@
 import React, { useEffect, useState } from "react";
 import { useAppContext } from "../../context/AppContext";
+import Title from "../../components/Title";
+import toast from "react-hot-toast";
+
+/**
+ * AdminHotels.jsx
+ *
+ * - list hotels
+ * - view rooms per hotel
+ * - add new room (with images + description)
+ * - edit existing room with image edit functionality + description
+ *
+ * Notes:
+ * - Uses admin endpoints (hotel-scoped multipart preferred)
+ *   POST /api/admin/hotels/:hotelId/rooms
+ *   PUT  /api/admin/hotels/:hotelId/rooms/:roomId
+ * - Fallback to JSON endpoints if hotel-scoped not available
+ */
 
 const AdminHotels = () => {
-  const { axios, getToken, toast } = useAppContext();
+  const { axios, getToken } = useAppContext();
 
   const [hotels, setHotels] = useState([]);
-  const [loadingHotels, setLoadingHotels] = useState(true);
+  const [loadingHotels, setLoadingHotels] = useState(false);
+  const [expandedHotelId, setExpandedHotelId] = useState(null);
 
-  const [openHotelId, setOpenHotelId] = useState(null);
-  const [roomsByHotel, setRoomsByHotel] = useState({}); // { [hotelId]: { loading, rooms } }
+  // rooms cached per hotel id
+  const [roomsByHotel, setRoomsByHotel] = useState({});
 
-  const [editingRoomId, setEditingRoomId] = useState(null);
-  const [roomDraft, setRoomDraft] = useState(null);
-
+  // adding room UI state
   const [addingHotelId, setAddingHotelId] = useState(null);
   const [newRoomDraft, setNewRoomDraft] = useState({
     roomType: "",
     pricePerNight: "",
     amenitiesText: "",
     isAvailable: true,
+    description: "",
+    images: { 1: null, 2: null, 3: null, 4: null },
+  });
+  const [savingNewRoom, setSavingNewRoom] = useState(false);
+
+  // editing room state
+  const [editing, setEditing] = useState({
+    hotelId: null,
+    roomId: null,
+    draft: null,
+    loading: false,
   });
 
-  // --------- load hotels ----------
-  const loadHotels = async () => {
-    try {
+  // load hotels
+  useEffect(() => {
+    (async () => {
       setLoadingHotels(true);
-      const { data } = await axios.get("/api/admin/hotels", {
-        headers: { Authorization: `Bearer ${await getToken()}` },
-      });
-      if (data.success) {
-        setHotels(data.hotels || []);
-      } else {
-        toast.error(data.message || "Failed to load hotels");
+      try {
+        const token = await getToken();
+        const { data } = await axios.get("/api/admin/hotels", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (data?.success) {
+          setHotels(data.hotels || []);
+        } else {
+          toast.error(data?.message || "Failed to load hotels");
+        }
+      } catch (err) {
+        console.error("load hotels", err);
+        toast.error("Failed to load hotels");
+      } finally {
+        setLoadingHotels(false);
       }
+    })();
+    // eslint-disable-next-line
+  }, []);
+
+  // helper to upload images to the dedicated room-images endpoint (used by fallback create)
+  const uploadRoomImages = async (roomId, filesObj = {}, token) => {
+    const files = Object.values(filesObj).filter(Boolean);
+    if (!files.length) return { success: true };
+
+    const formData = new FormData();
+    files.forEach((f) => formData.append("images", f));
+
+    try {
+      const { data } = await axios.post(`/api/admin/rooms/${roomId}/images`, formData, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log("uploadRoomImages response:", data);
+      return data;
     } catch (err) {
-      console.error(err);
-      toast.error(err.message || "Failed to load hotels");
-    } finally {
-      setLoadingHotels(false);
+      console.error("uploadRoomImages error:", err?.response || err.message);
+      throw err;
     }
   };
 
-  // --------- load rooms for hotel ----------
+  // helper: load rooms for a hotel
   const loadRoomsForHotel = async (hotelId) => {
     try {
-      setRoomsByHotel((prev) => ({
-        ...prev,
-        [hotelId]: { ...(prev[hotelId] || {}), loading: true },
-      }));
-
+      const token = await getToken();
       const { data } = await axios.get(`/api/admin/hotels/${hotelId}/rooms`, {
-        headers: { Authorization: `Bearer ${await getToken()}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
-
-      if (data.success) {
-        setRoomsByHotel((prev) => ({
-          ...prev,
-          [hotelId]: {
-            loading: false,
-            rooms: data.rooms || [],
-          },
-        }));
+      if (data?.success) {
+        setRoomsByHotel((prev) => ({ ...prev, [hotelId]: data.rooms || [] }));
       } else {
-        toast.error(data.message || "Failed to load rooms");
-        setRoomsByHotel((prev) => ({
-          ...prev,
-          [hotelId]: { loading: false, rooms: [] },
-        }));
+        toast.error(data?.message || "Failed to load rooms");
       }
     } catch (err) {
-      console.error(err);
-      toast.error(err.message || "Failed to load rooms");
-      setRoomsByHotel((prev) => ({
-        ...prev,
-        [hotelId]: { loading: false, rooms: [] },
-      }));
+      console.error("load rooms", err);
+      toast.error("Failed to load rooms");
     }
   };
 
-  // --------- delete hotel ----------
-  const handleDeleteHotel = async (hotelId) => {
-    if (!window.confirm("Delete this hotel and all its rooms & bookings?")) return;
-    try {
-      const { data } = await axios.delete(`/api/admin/hotels/${hotelId}`, {
-        headers: { Authorization: `Bearer ${await getToken()}` },
-      });
-      if (data.success) {
-        toast.success(data.message || "Hotel deleted");
-        setHotels((prev) => prev.filter((h) => h._id !== hotelId));
-        setRoomsByHotel((prev) => {
-          const copy = { ...prev };
-          delete copy[hotelId];
-          return copy;
-        });
-      } else {
-        toast.error(data.message || "Failed to delete hotel");
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error(err.message || "Failed to delete hotel");
-    }
-  };
-
-  // --------- open/close hotel rooms ----------
-  const toggleHotelOpen = (hotelId) => {
-    if (openHotelId === hotelId) {
-      setOpenHotelId(null);
+  // toggle expand hotel -> load rooms
+  const toggleHotel = async (hotelId) => {
+    if (expandedHotelId === hotelId) {
+      setExpandedHotelId(null);
       return;
     }
-    setOpenHotelId(hotelId);
-    if (!roomsByHotel[hotelId]?.rooms) {
-      loadRoomsForHotel(hotelId);
+    setExpandedHotelId(hotelId);
+    if (!roomsByHotel[hotelId]) {
+      await loadRoomsForHotel(hotelId);
     }
   };
 
-  // --------- start editing room ----------
-  const startEditRoom = (room, hotelId) => {
-    setEditingRoomId(room._id);
-    setRoomDraft({
-      _id: room._id,
-      hotelId,
-      roomType: room.roomType || "",
-      pricePerNight: room.pricePerNight ?? "",
-      isAvailable: room.isAvailable ?? true,
-      amenitiesText: (room.amenities || []).join(", "),
-    });
-  };
-
-  const cancelEditRoom = () => {
-    setEditingRoomId(null);
-    setRoomDraft(null);
-  };
-
-  // --------- save room edit ----------
-  const saveRoomEdit = async () => {
-    if (!roomDraft) return;
-
-    const { _id: roomId, hotelId } = roomDraft;
-    const payload = {
-      roomType: roomDraft.roomType,
-      pricePerNight: Number(roomDraft.pricePerNight) || 0,
-      isAvailable: !!roomDraft.isAvailable,
-      amenities: roomDraft.amenitiesText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    };
-
-    try {
-      const { data } = await axios.put(`/api/admin/rooms/${roomId}`, payload, {
-        headers: { Authorization: `Bearer ${await getToken()}` },
-      });
-      if (data.success) {
-        toast.success("Room updated");
-        setEditingRoomId(null);
-        setRoomDraft(null);
-        loadRoomsForHotel(hotelId);
-      } else {
-        toast.error(data.message || "Failed to update room");
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error(err.message || "Failed to update room");
-    }
-  };
-
-  // --------- delete room ----------
-  const handleDeleteRoom = async (roomId, hotelId) => {
-    if (!window.confirm("Delete this room and its bookings?")) return;
-    try {
-      const { data } = await axios.delete(`/api/admin/rooms/${roomId}`, {
-        headers: { Authorization: `Bearer ${await getToken()}` },
-      });
-      if (data.success) {
-        toast.success(data.message || "Room deleted");
-        loadRoomsForHotel(hotelId);
-      } else {
-        toast.error(data.message || "Failed to delete room");
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error(err.message || "Failed to delete room");
-    }
-  };
-
-  // --------- start add room ----------
+  // --- ADD ROOM helpers ---
   const startAddRoom = (hotelId) => {
     setAddingHotelId(hotelId);
     setNewRoomDraft({
@@ -192,6 +130,8 @@ const AdminHotels = () => {
       pricePerNight: "",
       amenitiesText: "",
       isAvailable: true,
+      description: "",
+      images: { 1: null, 2: null, 3: null, 4: null },
     });
   };
 
@@ -202,376 +142,623 @@ const AdminHotels = () => {
       pricePerNight: "",
       amenitiesText: "",
       isAvailable: true,
+      description: "",
+      images: { 1: null, 2: null, 3: null, 4: null },
     });
   };
 
+  const adminOnFileChange = (key, file) => {
+    setNewRoomDraft((prev) => ({
+      ...prev,
+      images: { ...(prev.images || {}), [key]: file },
+    }));
+  };
+
   const saveNewRoom = async () => {
-    if (!addingHotelId) return;
+    if (!addingHotelId) {
+      toast.error("No hotel selected (addingHotelId missing)");
+      console.error("saveNewRoom: addingHotelId is falsy:", addingHotelId);
+      return;
+    }
     if (!newRoomDraft.roomType || !newRoomDraft.pricePerNight) {
       toast.error("Room type and price are required");
       return;
     }
 
-    const payload = {
-      hotelId: addingHotelId,
-      roomType: newRoomDraft.roomType,
-      pricePerNight: Number(newRoomDraft.pricePerNight) || 0,
-      isAvailable: !!newRoomDraft.isAvailable,
-      amenities: newRoomDraft.amenitiesText
+    setSavingNewRoom(true);
+    try {
+      const token = await getToken();
+      const tryHotelUrl = `/api/admin/hotels/${addingHotelId}/rooms`;
+      const fallbackUrl = `/api/admin/rooms`;
+      const formData = new FormData();
+
+      formData.append("hotelId", addingHotelId);
+      formData.append("roomType", newRoomDraft.roomType);
+      formData.append("pricePerNight", Number(newRoomDraft.pricePerNight) || 0);
+      formData.append("isAvailable", newRoomDraft.isAvailable ? "true" : "false");
+      formData.append("description", newRoomDraft.description || "");
+      const amenities = newRoomDraft.amenitiesText
         .split(",")
         .map((s) => s.trim())
-        .filter(Boolean),
-      // images: [] // keep images unchanged or add later via cloudinary
-    };
+        .filter(Boolean);
+      formData.append("amenities", JSON.stringify(amenities));
 
-    try {
-      const { data } = await axios.post("/api/admin/rooms", payload, {
-        headers: { Authorization: `Bearer ${await getToken()}` },
+      Object.keys(newRoomDraft.images).forEach((k) => {
+        const file = newRoomDraft.images[k];
+        if (file) formData.append("images", file);
       });
-      if (data.success) {
-        toast.success("Room created");
-        cancelAddRoom();
-        loadRoomsForHotel(addingHotelId);
-      } else {
-        toast.error(data.message || "Failed to create room");
+
+      // Attempt hotel-scoped multipart first
+      try {
+        console.log("Attempting hotel-scoped POST:", tryHotelUrl);
+        const { data } = await axios.post(tryHotelUrl, formData, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log("hotel-scoped create response:", data);
+        if (data?.success) {
+          toast.success("Room created");
+          cancelAddRoom();
+          await loadRoomsForHotel(addingHotelId);
+          return;
+        }
+        // if backend returned success:false, show message
+        toast.error(data?.message || "Failed to create room (hotel route)");
+        return;
+      } catch (err) {
+        const status = err?.response?.status;
+        console.warn("hotel-scoped route error status:", status, err?.message);
+
+        // If hotel route returns 404 => fallback to JSON create + separate images upload
+        if (status === 404) {
+          console.log("Falling back to JSON create at", fallbackUrl);
+
+          // Build JSON payload (no files)
+          const payload = {
+            hotelId: addingHotelId,
+            roomType: newRoomDraft.roomType,
+            pricePerNight: Number(newRoomDraft.pricePerNight) || 0,
+            isAvailable: !!newRoomDraft.isAvailable,
+            description: newRoomDraft.description || "",
+            amenities,
+          };
+
+          // Create room (JSON)
+          const { data: createData } = await axios.post(fallbackUrl, payload, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          console.log("Fallback create response:", createData);
+          if (!createData?.success || !createData?.room?._id) {
+            toast.error(createData?.message || "Failed to create room (fallback)");
+            return;
+          }
+
+          // If images provided, upload them separately
+          const roomId = createData.room._id;
+          const uploadResult = await uploadRoomImages(roomId, newRoomDraft.images, token);
+          // uploadResult should indicate success from server
+          if (uploadResult?.success) {
+            toast.success("Room created and images uploaded");
+            cancelAddRoom();
+            await loadRoomsForHotel(addingHotelId);
+            return;
+          } else {
+            // image upload failed — still room created, but inform admin
+            toast.error(uploadResult?.message || "Room created but image upload failed");
+            await loadRoomsForHotel(addingHotelId);
+            cancelAddRoom();
+            return;
+          }
+        } else {
+          // non-404 error — bubble details
+          console.error("saveNewRoom unexpected error:", err.response?.data || err.message);
+          if (err.response) {
+            toast.error(`Server ${err.response.status}: ${err.response.data?.message || JSON.stringify(err.response.data)}`);
+          } else {
+            toast.error(err.message || "Network error while creating room");
+          }
+          return;
+        }
       }
-    } catch (err) {
-      console.error(err);
-      toast.error(err.message || "Failed to create room");
+    } catch (outerErr) {
+      console.error("saveNewRoom outer error:", outerErr);
+      toast.error(outerErr.message || "Unexpected error");
+    } finally {
+      setSavingNewRoom(false);
     }
   };
 
-  useEffect(() => {
-    loadHotels();
-    // eslint-disable-next-line
-  }, []);
+  // --- EDIT ROOM helpers ---
+  const startEditRoom = (hotelId, room) => {
+    // draft contains editable fields + bookkeeping for images
+    setEditing({
+      hotelId,
+      roomId: room._id,
+      loading: false,
+      draft: {
+        roomType: room.roomType || "",
+        pricePerNight: room.pricePerNight || 0,
+        amenitiesText: (room.amenities || []).join(", "),
+        isAvailable: !!room.isAvailable,
+        description: room.description || "",
+        // existingImages: array of URLs (we track which are kept vs removed)
+        existingImages: Array.isArray(room.images) ? [...room.images] : [],
+        // newImages: an object slots for newly uploaded files
+        newImages: { 1: null, 2: null, 3: null, 4: null },
+        // track images marked for removal (URLs)
+        removeImages: [],
+      },
+    });
+  };
 
-  // --------- render helpers ----------
-  const renderRooms = (hotelId) => {
-    const state = roomsByHotel[hotelId];
-    if (!state || state.loading) {
-      return <p className="text-xs text-slate-500 px-2 py-2">Loading rooms…</p>;
-    }
-    const rooms = state.rooms || [];
-    if (!rooms.length && addingHotelId !== hotelId) {
-      return (
-        <div className="px-2 py-2 text-xs text-slate-500">
-          No rooms for this hotel yet.
-        </div>
-      );
-    }
+  const cancelEdit = () => {
+    setEditing({ hotelId: null, roomId: null, draft: null, loading: false });
+  };
 
+  const editOnFileChange = (slotKey, file) => {
+    setEditing((prev) => ({
+      ...prev,
+      draft: { ...prev.draft, newImages: { ...(prev.draft.newImages || {}), [slotKey]: file } },
+    }));
+  };
+
+  const toggleRemoveExistingImage = (imageUrl) => {
+    setEditing((prev) => {
+      const draft = { ...prev.draft };
+      const exists = draft.removeImages.includes(imageUrl);
+      draft.removeImages = exists
+        ? draft.removeImages.filter((u) => u !== imageUrl)
+        : [...draft.removeImages, imageUrl];
+      return { ...prev, draft };
+    });
+  };
+
+  const saveEditedRoom = async () => {
+    if (!editing?.hotelId || !editing?.roomId || !editing?.draft) return;
+    setEditing((prev) => ({ ...prev, loading: true }));
+
+    try {
+      const token = await getToken();
+      const { draft, hotelId, roomId } = editing;
+
+      // Prepare formData for update
+      const formData = new FormData();
+      formData.append("hotelId", hotelId); // include for fallback
+      formData.append("roomType", draft.roomType);
+      formData.append("pricePerNight", Number(draft.pricePerNight) || 0);
+      formData.append("isAvailable", draft.isAvailable ? "true" : "false");
+      formData.append("description", draft.description || "");
+      const amenities = draft.amenitiesText
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      formData.append("amenities", JSON.stringify(amenities));
+
+      if (draft.removeImages && draft.removeImages.length > 0) {
+        formData.append("removeImages", JSON.stringify(draft.removeImages));
+      }
+
+      Object.keys(draft.newImages || {}).forEach((k) => {
+        const file = draft.newImages[k];
+        if (file) formData.append("images", file);
+      });
+
+      const hotelScopedUrl = `/api/admin/hotels/${hotelId}/rooms/${roomId}`;
+      const fallbackUrl = `/api/admin/rooms/${roomId}`; // generic update endpoint (if available)
+
+      console.log("saveEditedRoom -> try PUT:", hotelScopedUrl);
+      for (const key of formData.keys()) console.log("FormData key:", key);
+
+      // try hotel-scoped PUT first
+      try {
+        const { data } = await axios.put(hotelScopedUrl, formData, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log("saveEditedRoom success (hotel route):", data);
+        if (data?.success) {
+          toast.success("Room updated");
+          await loadRoomsForHotel(hotelId);
+          cancelEdit();
+          return;
+        } else {
+          toast.error(data?.message || "Failed to update room (hotel route)");
+          return;
+        }
+      } catch (err) {
+        const status = err?.response?.status;
+        console.warn("saveEditedRoom: hotel route error status:", status, err?.message);
+        if (status === 404) {
+          console.log("saveEditedRoom: falling back to generic update route:", fallbackUrl);
+          const { data: fallbackData } = await axios.put(fallbackUrl, formData, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          console.log("saveEditedRoom success (fallback):", fallbackData);
+          if (fallbackData?.success) {
+            toast.success("Room updated (fallback)");
+            await loadRoomsForHotel(hotelId);
+            cancelEdit();
+            return;
+          } else {
+            toast.error(fallbackData?.message || "Failed to update room (fallback)");
+            return;
+          }
+        } else {
+          console.error("saveEditedRoom unexpected error:", err.response?.data || err.message);
+          if (err.response) {
+            toast.error(`Server responded ${err.response.status}: ${err.response.data?.message || JSON.stringify(err.response.data)}`);
+          } else {
+            toast.error(err.message || "Network error while updating room");
+          }
+          return;
+        }
+      }
+    } catch (outerErr) {
+      console.error("saveEditedRoom outer error:", outerErr);
+      toast.error(outerErr.message || "Unexpected error");
+    } finally {
+      setEditing((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  // delete room (simple)
+  const deleteRoom = async (hotelId, roomId) => {
+    if (!window.confirm("Delete this room? This action cannot be undone.")) return;
+    try {
+      const token = await getToken();
+      const { data } = await axios.delete(`/api/admin/hotels/${hotelId}/rooms/${roomId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (data?.success) {
+        toast.success("Room deleted");
+        await loadRoomsForHotel(hotelId);
+      } else {
+        toast.error(data?.message || "Failed to delete room");
+      }
+    } catch (err) {
+      console.error("deleteRoom", err);
+      toast.error("Failed to delete room");
+    }
+  };
+
+  // small renderer for room card
+  const renderRoomCard = (hotelId, room) => {
+    const isEditing = editing.hotelId === hotelId && editing.roomId === room._id;
     return (
-      <div className="space-y-2">
-        {rooms.map((room) => (
-          <div
-            key={room._id}
-            className="border border-slate-100 rounded-xl px-3 py-2 bg-slate-50 flex flex-col md:flex-row md:items-center md:justify-between gap-2"
-          >
-            {/* display or edit mode */}
-            {editingRoomId === room._id && roomDraft ? (
-              <div className="flex-1 space-y-1 text-xs md:text-sm text-slate-700">
-                <div className="flex flex-wrap gap-2">
-                  <div>
-                    <p className="text-[11px] uppercase text-slate-400">Room Type</p>
-                    <input
-                      type="text"
-                      value={roomDraft.roomType}
-                      onChange={(e) =>
-                        setRoomDraft((prev) => ({ ...prev, roomType: e.target.value }))
-                      }
-                      className="border border-slate-200 rounded px-2 py-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <p className="text-[11px] uppercase text-slate-400">Price / night</p>
-                    <input
-                      type="number"
-                      value={roomDraft.pricePerNight}
-                      onChange={(e) =>
-                        setRoomDraft((prev) => ({
-                          ...prev,
-                          pricePerNight: e.target.value,
-                        }))
-                      }
-                      className="border border-slate-200 rounded px-2 py-1 text-xs w-24"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1 mt-4">
-                    <input
-                      id={`avail-${room._id}`}
-                      type="checkbox"
-                      checked={roomDraft.isAvailable}
-                      onChange={(e) =>
-                        setRoomDraft((prev) => ({
-                          ...prev,
-                          isAvailable: e.target.checked,
-                        }))
-                      }
-                    />
-                    <label
-                      htmlFor={`avail-${room._id}`}
-                      className="text-xs text-slate-600"
-                    >
-                      Available
-                    </label>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[11px] uppercase text-slate-400">Amenities</p>
-                  <input
-                    type="text"
-                    value={roomDraft.amenitiesText}
-                    onChange={(e) =>
-                      setRoomDraft((prev) => ({
-                        ...prev,
-                        amenitiesText: e.target.value,
-                      }))
-                    }
-                    placeholder="wifi, breakfast, pool..."
-                    className="border border-slate-200 rounded px-2 py-1 text-xs w-full"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="flex-1 text-xs md:text-sm">
-                <p className="font-medium text-slate-900">
-                  {room.roomType || "Room"} • ₹{room.pricePerNight ?? 0}/night
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  {room.isAvailable ? "Available" : "Not available"}
-                </p>
-                {room.amenities && room.amenities.length > 0 && (
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Amenities: {room.amenities.join(", ")}
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-2 justify-end">
-              {editingRoomId === room._id ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={saveRoomEdit}
-                    className="px-3 py-1 rounded-lg bg-emerald-500 text-white text-xs font-medium"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelEditRoom}
-                    className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => startEditRoom(room, hotelId)}
-                    className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteRoom(room._id, hotelId)}
-                    className="px-3 py-1 rounded-lg bg-rose-500 text-white text-xs font-medium"
-                  >
-                    Delete
-                  </button>
-                </>
-              )}
-            </div>
+      <div key={room._id} className="border rounded p-3 shadow-sm bg-white">
+        <div className="flex justify-between">
+          <div>
+            <div className="font-semibold">{room.roomType}</div>
+            <div className="text-xs text-slate-500">₹{room.pricePerNight} / night</div>
           </div>
-        ))}
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={() => startEditRoom(hotelId, room)}
+              className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800"
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => deleteRoom(hotelId, room._id)}
+              className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-700"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
 
-        {/* Add-room form for this hotel */}
-        {addingHotelId === hotelId && (
-          <div className="border border-dashed border-slate-300 rounded-xl px-3 py-3 bg-white space-y-2 text-xs md:text-sm">
-            <p className="font-medium text-slate-800">Add new room</p>
-            <div className="flex flex-wrap gap-3">
+        {/* images preview */}
+        <div className="mt-3 flex gap-2">
+          {(room.images || []).slice(0, 4).map((img, i) => (
+            <img
+              key={i}
+              src={img}
+              alt={`room-${i}`}
+              className="w-20 h-14 object-cover rounded"
+            />
+          ))}
+        </div>
+
+        {/* inline editor */}
+        {isEditing && editing.draft && (
+          <div className="mt-4 border-t pt-3 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <p className="text-[11px] uppercase text-slate-400">Room Type</p>
+                <p className="text-xs text-slate-600">Room Type</p>
                 <input
                   type="text"
-                  value={newRoomDraft.roomType}
+                  value={editing.draft.roomType}
                   onChange={(e) =>
-                    setNewRoomDraft((prev) => ({
+                    setEditing((prev) => ({
                       ...prev,
-                      roomType: e.target.value,
+                      draft: { ...prev.draft, roomType: e.target.value },
                     }))
                   }
-                  className="border border-slate-200 rounded px-2 py-1 text-xs"
+                  className="border rounded px-2 py-1 text-sm w-full"
                 />
               </div>
               <div>
-                <p className="text-[11px] uppercase text-slate-400">Price / night</p>
+                <p className="text-xs text-slate-600">Price / night</p>
                 <input
                   type="number"
-                  value={newRoomDraft.pricePerNight}
+                  value={editing.draft.pricePerNight}
                   onChange={(e) =>
-                    setNewRoomDraft((prev) => ({
+                    setEditing((prev) => ({
                       ...prev,
-                      pricePerNight: e.target.value,
+                      draft: { ...prev.draft, pricePerNight: e.target.value },
                     }))
                   }
-                  className="border border-slate-200 rounded px-2 py-1 text-xs w-24"
+                  className="border rounded px-2 py-1 text-sm w-full"
                 />
               </div>
-              <div className="flex items-center gap-1 mt-4">
-                <input
-                  id={`new-avail-${hotelId}`}
-                  type="checkbox"
-                  checked={newRoomDraft.isAvailable}
-                  onChange={(e) =>
-                    setNewRoomDraft((prev) => ({
-                      ...prev,
-                      isAvailable: e.target.checked,
-                    }))
-                  }
-                />
-                <label
-                  htmlFor={`new-avail-${hotelId}`}
-                  className="text-xs text-slate-600"
-                >
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editing.draft.isAvailable}
+                    onChange={(e) =>
+                      setEditing((prev) => ({
+                        ...prev,
+                        draft: { ...prev.draft, isAvailable: e.target.checked },
+                      }))
+                    }
+                  />
                   Available
                 </label>
               </div>
             </div>
+
             <div>
-              <p className="text-[11px] uppercase text-slate-400">Amenities</p>
-              <input
-                type="text"
-                value={newRoomDraft.amenitiesText}
+              <p className="text-xs text-slate-600">Description</p>
+              <textarea
+                value={editing.draft.description}
                 onChange={(e) =>
-                  setNewRoomDraft((prev) => ({
+                  setEditing((prev) => ({
                     ...prev,
-                    amenitiesText: e.target.value,
+                    draft: { ...prev.draft, description: e.target.value },
                   }))
                 }
-                placeholder="wifi, breakfast, pool..."
-                className="border border-slate-200 rounded px-2 py-1 text-xs w-full"
+                className="border rounded px-2 py-1 text-sm w-full min-h-[80px]"
               />
             </div>
-            <div className="flex gap-2 justify-end pt-1">
+
+            <div>
+              <p className="text-xs text-slate-600">Amenities (comma separated)</p>
+              <input
+                type="text"
+                value={editing.draft.amenitiesText}
+                onChange={(e) =>
+                  setEditing((prev) => ({
+                    ...prev,
+                    draft: { ...prev.draft, amenitiesText: e.target.value },
+                  }))
+                }
+                className="border rounded px-2 py-1 text-sm w-full"
+              />
+            </div>
+
+            {/* Existing images - can mark for removal */}
+            <div>
+              <p className="text-xs text-slate-600 mb-1">Existing images</p>
+              <div className="flex gap-2 flex-wrap">
+                {(editing.draft.existingImages || []).map((imgUrl) => {
+                  const marked = editing.draft.removeImages.includes(imgUrl);
+                  return (
+                    <div key={imgUrl} className="relative w-24 h-16 border rounded overflow-hidden">
+                      <img src={imgUrl} alt="" className={`w-full h-full object-cover ${marked ? "opacity-40" : ""}`} />
+                      <button
+                        type="button"
+                        onClick={() => toggleRemoveExistingImage(imgUrl)}
+                        className={`absolute top-1 right-1 text-xs px-2 py-0.5 rounded ${marked ? "bg-green-600 text-white" : "bg-white text-rose-600"}`}
+                        title={marked ? "Undo remove" : "Remove image"}
+                      >
+                        {marked ? "Undo" : "Remove"}
+                      </button>
+                    </div>
+                  );
+                })}
+                {(!editing.draft.existingImages || editing.draft.existingImages.length === 0) && (
+                  <div className="text-xs text-slate-400">No existing images</div>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">Click remove to mark an image for deletion (it is deleted on save).</p>
+            </div>
+
+            {/* New image upload slots (these are additional images to upload) */}
+            <div>
+              <p className="text-xs text-slate-600 mb-1">Upload new images (optional)</p>
+              <div className="flex gap-2">
+                {Object.keys(editing.draft.newImages || {}).map((k) => (
+                  <label key={k} className="block">
+                    <div className="w-24 h-16 border rounded flex items-center justify-center overflow-hidden bg-slate-50">
+                      {editing.draft.newImages[k] ? (
+                        <img
+                          src={URL.createObjectURL(editing.draft.newImages[k])}
+                          alt=""
+                          className="object-cover w-full h-full"
+                        />
+                      ) : (
+                        <span className="text-xs text-slate-400">Upload</span>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => editOnFileChange(k, e.target.files[0])}
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">New images will be appended to remaining images. Max 4 uploads recommended.</p>
+            </div>
+
+            <div className="flex gap-2 justify-end">
               <button
-                type="button"
-                onClick={saveNewRoom}
-                className="px-3 py-1 rounded-lg bg-emerald-500 text-white text-xs font-medium"
+                onClick={saveEditedRoom}
+                className="px-3 py-1 rounded bg-emerald-500 text-white text-sm"
+                disabled={editing.loading}
               >
-                Save room
+                {editing.loading ? "Saving..." : "Save changes"}
               </button>
               <button
-                type="button"
-                onClick={cancelAddRoom}
-                className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium"
+                onClick={cancelEdit}
+                className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm"
+                disabled={editing.loading}
               >
                 Cancel
               </button>
             </div>
           </div>
         )}
-
-        {/* Button to open add-room form */}
-        {addingHotelId !== hotelId && (
-          <button
-            type="button"
-            onClick={() => startAddRoom(hotelId)}
-            className="mt-1 inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-slate-900 text-white text-xs font-medium"
-          >
-            + Add Room
-          </button>
-        )}
       </div>
     );
   };
 
-  // --------- render main ---------
-  if (loadingHotels) {
-    return (
-      <div className="space-y-3">
-        <h2 className="text-xl font-semibold">Hotels Management</h2>
-        <p className="text-sm text-slate-500">Loading hotels…</p>
-      </div>
-    );
-  }
-
-  if (!hotels.length) {
-    return (
-      <div className="space-y-3">
-        <h2 className="text-xl font-semibold">Hotels Management</h2>
-        <p className="text-sm text-slate-500">No hotels found.</p>
-      </div>
-    );
-  }
-
+  // render hotels list
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2">
-        <div>
-          <h2 className="text-xl md:text-2xl font-semibold text-slate-900">
-            Hotels Management
-          </h2>
-          <p className="text-sm text-slate-500">
-            View and manage all hotels and their rooms across the platform.
-          </p>
-        </div>
-      </div>
+    <div className="p-6">
+      <Title title="Admin — Hotels" subTitle="Manage hotels and rooms (create, edit, delete). Image upload supported." align="left" />
 
-      <div className="space-y-3">
-        {hotels.map((hotel) => {
-          const isOpen = openHotelId === hotel._id;
-          return (
-            <div
-              key={hotel._id}
-              className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden"
-            >
-              <button
-                type="button"
-                onClick={() => toggleHotelOpen(hotel._id)}
-                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs text-slate-500">
-                    {isOpen ? "▾" : "▸"}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm text-slate-900 truncate">
-                      {hotel.name}
-                    </p>
-                    <p className="text-xs text-slate-500 truncate">
-                      {hotel.city || hotel.address || "—"} • Owner:{" "}
-                      {hotel.owner?.username || "—"}
-                    </p>
+      <div className="mt-4 space-y-4">
+        {loadingHotels ? (
+          <div>Loading hotels...</div>
+        ) : hotels.length === 0 ? (
+          <div className="text-sm text-slate-500">No hotels found.</div>
+        ) : (
+          hotels.map((hotel) => {
+            const rooms = roomsByHotel[hotel._id] || [];
+            const isExpanded = expandedHotelId === hotel._id;
+            return (
+              <div key={hotel._id} className="border rounded-md bg-white p-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="font-medium">{hotel.name}</div>
+                    <div className="text-xs text-slate-500">{hotel.city || ""}</div>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <button
+                      onClick={() => toggleHotel(hotel._id)}
+                      className="text-xs px-2 py-1 rounded bg-slate-100"
+                    >
+                      {isExpanded ? "Collapse" : "View rooms"}
+                    </button>
+                    <button
+                      onClick={() => startAddRoom(hotel._id)}
+                      className="text-xs px-2 py-1 rounded bg-emerald-500 text-white"
+                    >
+                      Add room
+                    </button>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteHotel(hotel._id);
-                  }}
-                  className="px-3 py-1 rounded-lg bg-rose-500 text-white text-xs font-medium"
-                >
-                  Delete Hotel
-                </button>
-              </button>
 
-              {isOpen && (
-                <div className="px-4 pb-4 border-t border-slate-100">
-                  <p className="text-xs text-slate-500 mt-2 mb-1">
-                    Rooms in this hotel:
-                  </p>
-                  {renderRooms(hotel._id)}
-                </div>
-              )}
-            </div>
-          );
-        })}
+                {/* expanded area */}
+                {isExpanded && (
+                  <div className="mt-3 space-y-3">
+                    {/* Add Room UI */}
+                    {addingHotelId === hotel._id ? (
+                      <div className="border p-3 rounded bg-slate-50">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div>
+                            <p className="text-[11px] uppercase text-slate-400">Room Type</p>
+                            <input
+                              type="text"
+                              value={newRoomDraft.roomType}
+                              onChange={(e) => setNewRoomDraft((p) => ({ ...p, roomType: e.target.value }))}
+                              className="border rounded px-2 py-1 text-xs w-full"
+                            />
+                          </div>
+                          <div>
+                            <p className="text-[11px] uppercase text-slate-400">Price / night</p>
+                            <input
+                              type="number"
+                              value={newRoomDraft.pricePerNight}
+                              onChange={(e) => setNewRoomDraft((p) => ({ ...p, pricePerNight: e.target.value }))}
+                              className="border rounded px-2 py-1 text-xs w-full"
+                            />
+                          </div>
+                          <div className="flex items-end">
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={newRoomDraft.isAvailable}
+                                onChange={(e) => setNewRoomDraft((p) => ({ ...p, isAvailable: e.target.checked }))}
+                              />
+                              Available
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="mt-2">
+                          <p className="text-[11px] uppercase text-slate-400">Description</p>
+                          <textarea
+                            value={newRoomDraft.description}
+                            onChange={(e) => setNewRoomDraft((p) => ({ ...p, description: e.target.value }))}
+                            className="border rounded px-2 py-1 text-xs w-full min-h-[70px]"
+                          />
+                        </div>
+
+                        <div className="mt-2">
+                          <p className="text-[11px] uppercase text-slate-400">Amenities</p>
+                          <input
+                            type="text"
+                            value={newRoomDraft.amenitiesText}
+                            onChange={(e) => setNewRoomDraft((p) => ({ ...p, amenitiesText: e.target.value }))}
+                            placeholder="wifi, breakfast, pool..."
+                            className="border rounded px-2 py-1 text-xs w-full"
+                          />
+                        </div>
+
+                        <div className="mt-2">
+                          <p className="text-[11px] uppercase text-slate-400 mb-1">Images (optional)</p>
+                          <div className="flex gap-2">
+                            {Object.keys(newRoomDraft.images).map((k) => (
+                              <label key={k} className="block">
+                                <div className="w-24 h-16 border rounded flex items-center justify-center overflow-hidden bg-slate-50">
+                                  {newRoomDraft.images[k] ? (
+                                    <img src={URL.createObjectURL(newRoomDraft.images[k])} alt="" className="object-cover w-full h-full" />
+                                  ) : (
+                                    <span className="text-xs text-slate-400">Upload</span>
+                                  )}
+                                </div>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => adminOnFileChange(k, e.target.files[0])}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 justify-end mt-3">
+                          <button
+                            onClick={saveNewRoom}
+                            className="px-3 py-1 rounded bg-emerald-500 text-white text-sm"
+                            disabled={savingNewRoom}
+                          >
+                            {savingNewRoom ? "Saving..." : "Save room"}
+                          </button>
+                          <button onClick={cancelAddRoom} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* rooms list */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {rooms.length === 0 ? (
+                        <div className="text-sm text-slate-500">No rooms found for this hotel.</div>
+                      ) : (
+                        rooms.map((room) => renderRoomCard(hotel._id, room))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

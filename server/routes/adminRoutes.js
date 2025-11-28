@@ -19,6 +19,19 @@ import {
     createAdminRoom,
 } from "../controllers/adminController.js";
 
+
+import {
+  createAdminRoomWithImages,
+  // uploadImagesForAdminRoom,
+  updateAdminRoomWithImages,
+} from "../controllers/adminRoomsController.js";
+
+
+import { upload } from "../utils/uploadHelpers.js";
+
+import multer from "multer";
+// const upload = multer({ storage: multer.memoryStorage() });
+
 const router = express.Router();
 
 // Clerk auth + role check
@@ -34,11 +47,15 @@ router.patch("/bookings/:id", updateAdminBooking);
 
 // Hotels
 router.get("/hotels", getAdminHotels);
-router.delete("/hotels/:id", deleteAdminHotel);
+router.delete("/hotels/:hotelId/rooms/:roomId", deleteAdminRoom);
 router.get("/hotels/:id/rooms", getAdminHotelRooms);
 
 // Rooms
+router.post("/hotels/:hotelId/rooms", upload.array("images", 8), createAdminRoomWithImages);
 router.post("/rooms", createAdminRoom);
+// router.post("/rooms/:roomId/images", upload.array("images", 8), uploadImagesForAdminRoom);
+router.put("/hotels/:hotelId/rooms/:roomId", upload.array("images", 8), updateAdminRoomWithImages);
+
 router.put("/rooms/:roomId", updateAdminRoom);
 router.delete("/rooms/:roomId", deleteAdminRoom);
 

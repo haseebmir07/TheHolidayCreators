@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { assets } from "../../assets/assets";
 import Title from "../../components/Title";
 import toast from "react-hot-toast";
@@ -27,7 +27,30 @@ const AddRoom = () => {
       "Pool Access": false,
     },
     isAvailable: true,
+    description: "",
   });
+
+  // a ref to hold last auto-generated description to avoid overwriting user edits
+  const lastAutoDescRef = useRef("");
+
+  // generate suggestion based on roomType and selectedHotel name
+  const generateSuggestedDescription = (roomType, hotelId) => {
+    const hotel = hotels.find((h) => h._id === hotelId);
+    const hotelName = hotel?.name || "this hotel";
+    if (!roomType) return "";
+    return `${roomType} at ${hotelName} — comfy, clean, and thoughtfully furnished. Perfect for travellers looking for value and convenience.`;
+  };
+
+  // when roomType or selectedHotel changes, update description only if user hasn't edited it
+  useEffect(() => {
+    const suggested = generateSuggestedDescription(inputs.roomType, selectedHotel);
+    // If current description equals last auto-suggestion OR is empty -> overwrite with new suggestion
+    if (!inputs.description || inputs.description === lastAutoDescRef.current) {
+      setInputs((prev) => ({ ...prev, description: suggested }));
+      lastAutoDescRef.current = suggested;
+    }
+    // eslint-disable-next-line
+  }, [inputs.roomType, selectedHotel, hotels.length]);
 
   // load owner's hotels
   useEffect(() => {
@@ -54,15 +77,17 @@ const AddRoom = () => {
     // eslint-disable-next-line
   }, []);
 
-  const toggleAmenity = (amenity) => {
+  // helper to toggle amenity
+  const toggleAmenity = (key) => {
     setInputs((prev) => ({
       ...prev,
-      amenities: { ...prev.amenities, [amenity]: !prev.amenities[amenity] },
+      amenities: { ...prev.amenities, [key]: !prev.amenities[key] },
     }));
   };
 
-  const onFileChange = (key, file) => {
-    setImages((prev) => ({ ...prev, [key]: file }));
+  // file change
+  const onFileChange = (slot, file) => {
+    setImages((prev) => ({ ...prev, [slot]: file }));
   };
 
   const onSubmitHandler = async (e) => {
@@ -94,6 +119,8 @@ const AddRoom = () => {
 
       const amenitiesArr = Object.keys(inputs.amenities).filter((k) => inputs.amenities[k]);
       formData.append("amenities", JSON.stringify(amenitiesArr));
+
+      formData.append("description", inputs.description || "");
 
       Object.keys(images).forEach((key) => {
         if (images[key]) formData.append("images", images[key]);
@@ -135,116 +162,94 @@ const AddRoom = () => {
         subTitle="Fill in the details carefully and accurate room details, pricing, and amenities, to enhance the user booking experience."
       />
 
-      <div className="mt-6">
-        <label className="block mb-2 font-medium">Select Hotel</label>
-        {loadingHotels ? (
-          <p>Loading hotels...</p>
-        ) : hotels.length === 0 ? (
-          <div className="p-4 border rounded bg-yellow-50">
-            <p className="mb-2">You don't have any hotels yet. Create a hotel first to add rooms.</p>
-            <button
-              type="button"
-              onClick={() => window.location.assign("/owner/manage-hotels")}
-              className="px-3 py-1 bg-indigo-600 text-white rounded"
-            >
-              Create Hotel
-            </button>
-          </div>
-        ) : (
-          <select
-            value={selectedHotel}
-            onChange={(e) => setSelectedHotel(e.target.value)}
-            className="w-full border px-3 py-2 rounded"
-            required
-          >
-            <option value="">-- Select Hotel --</option>
-            {hotels.map((h) => (
-              <option key={h._id} value={h._id}>
-                {h.name} {h.city ? `— ${h.city}` : ""}
-              </option>
-            ))}
-          </select>
-        )}
+      {/* Hotel select */}
+      <div className="mb-3">
+        <p className="text-gray-800">Select Hotel</p>
+        <select
+          value={selectedHotel}
+          onChange={(e) => setSelectedHotel(e.target.value)}
+          className="border rounded px-3 py-2 mt-1 w-full"
+        >
+          <option value="">Choose hotel</option>
+          {hotels.map((h) => (
+            <option key={h._id} value={h._id}>
+              {h.name}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* Images */}
-      <p className="text-gray-800 mt-6">Images</p>
-      <div className="grid grid-cols-2 sm:flex gap-4 my-2 flex-wrap">
-        {Object.keys(images).map((key) => (
-          <label key={key} htmlFor={`roomImage${key}`}>
-            <img
-              className="max-h-13 cursor-pointer opacity-80"
-              src={images[key] ? URL.createObjectURL(images[key]) : assets.uploadArea}
-              alt=""
-            />
-            <input
-              type="file"
-              accept="image/*"
-              id={`roomImage${key}`}
-              hidden
-              onChange={(e) => onFileChange(key, e.target.files[0])}
-            />
+      {/* Image uploads (4 slots) */}
+      <div className="mb-4">
+        <p className="text-gray-800">Images</p>
+        <div className="flex gap-3 mt-2">
+          {Object.keys(images).map((k) => (
+            <label key={k} className="block">
+              <div className="w-28 h-20 border rounded flex items-center justify-center overflow-hidden bg-slate-50">
+                {images[k] ? (
+                  <img src={URL.createObjectURL(images[k])} alt="" className="object-cover w-full h-full" />
+                ) : (
+                  <span className="text-xs text-slate-400">Upload</span>
+                )}
+              </div>
+              <input className="hidden" type="file" accept="image/*" onChange={(e) => onFileChange(k, e.target.files[0])} />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Room Type & Price */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <p className="text-gray-800">Room Type</p>
+          <input
+            className="border rounded px-3 py-2 mt-1 w-full"
+            value={inputs.roomType}
+            onChange={(e) => setInputs((p) => ({ ...p, roomType: e.target.value }))}
+            placeholder="Deluxe / Suite / Studio"
+          />
+        </div>
+        <div>
+          <p className="text-gray-800">Price per night</p>
+          <input
+            className="border rounded px-3 py-2 mt-1 w-full"
+            type="number"
+            value={inputs.pricePerNight}
+            onChange={(e) => setInputs((p) => ({ ...p, pricePerNight: e.target.value }))}
+            placeholder="0"
+          />
+        </div>
+      </div>
+
+      {/* Amenities toggles */}
+      <div className="mt-4 flex gap-2 flex-wrap">
+        {Object.keys(inputs.amenities).map((a) => (
+          <label key={a} className="flex items-center gap-2 px-3 py-2 rounded bg-gray-100">
+            <input type="checkbox" checked={inputs.amenities[a]} onChange={() => toggleAmenity(a)} />
+            <span className="text-sm">{a}</span>
           </label>
         ))}
       </div>
 
-      <div className="w-full flex max-sm:flex-col sm:gap-4 mt-4">
-        <div className="flex-1 max-w-48">
-          <p className="text-gray-800 mt-4">Room Type</p>
-          <select
-            className="border opacity-70 border-gray-300 mt-1 rounded p-2 w-full"
-            value={inputs.roomType}
-            onChange={(e) => setInputs({ ...inputs, roomType: e.target.value })}
-          >
-            <option value="">Select Room Type</option>
-            <option value="Single Bed">Single Bed</option>
-            <option value="Double Bed">Double Bed</option>
-            <option value="Luxury Room">Luxury Room</option>
-            <option value="Family Suite">Family Suite</option>
-          </select>
-        </div>
-
-        <div>
-          <p className="mt-4 text-gray-800">
-            Price <span className="text-xs">/night</span>
-          </p>
-          <input
-            type="number"
-            placeholder="0"
-            className="border border-gray-300 mt-1 rounded p-2 w-24"
-            value={inputs.pricePerNight}
-            onChange={(e) => setInputs({ ...inputs, pricePerNight: e.target.value })}
-            min="0"
-          />
-        </div>
-      </div>
-
-      <p className="text-gray-800 mt-4">Amenities</p>
-      <div className="flex flex-col flex-wrap mt-1 text-gray-400 max-w-sm">
-        {Object.keys(inputs.amenities).map((amenity, index) => (
-          <div key={index}>
-            <input
-              type="checkbox"
-              id={`amenities${index + 1}`}
-              checked={inputs.amenities[amenity]}
-              onChange={() => toggleAmenity(amenity)}
-            />
-            <label htmlFor={`amenities${index + 1}`}> {amenity} </label>
-          </div>
-        ))}
-      </div>
-
+      {/* Description field */}
       <div className="mt-4">
-        <label className="inline-flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={inputs.isAvailable}
-            onChange={() => setInputs((p) => ({ ...p, isAvailable: !p.isAvailable }))}
-          />
-          <span className="text-sm"> Available</span>
-        </label>
+        <p className="text-gray-800">Description</p>
+        <textarea
+          className="border border-gray-300 rounded p-2 w-full mt-1 min-h-[90px]"
+          placeholder="Write a custom description for this room..."
+          value={inputs.description}
+          onChange={(e) => {
+            // when user edits manually, we shouldn't overwrite next auto-suggest
+            lastAutoDescRef.current = ""; // clear last auto so future generator can overwrite if desired
+            setInputs((prev) => ({ ...prev, description: e.target.value }));
+          }}
+        />
+        <p className="text-xs text-slate-400 mt-1">
+          Tip: we’ve suggested a description above — feel free to edit it to make this room unique.
+        </p>
       </div>
 
+      {/* Submit */}
       <button className="bg-primary text-white px-8 py-2 rounded mt-8 cursor-pointer" disabled={loading}>
         {loading ? "Adding..." : "Add Room"}
       </button>
