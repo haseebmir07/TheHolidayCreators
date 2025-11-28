@@ -60,7 +60,7 @@ const Navbar = () => {
 
   return (
     <nav
-      className={`fixed top-0 left-0 w-full flex items-center justify-between px-4 md:px-16 lg:px-24 xl:px-32 transition-all duration-500 z-50 ${isScrolled
+      className={`fixed top-0 left-0 w-full flex items-center justify-between px-4 md:px-16 lg:px-24 xl:px-32 transition-all duration-500 z-50 border-none ${isScrolled
         ? "bg-white/80 shadow-md text-gray-700 backdrop-blur-lg py-3 md:py-4"
         : "py-4 md:py-6"
         }`}
@@ -69,7 +69,7 @@ const Navbar = () => {
         <img
           src={assets.logo}
           alt="logo"
-          className={`h-9 ${isScrolled && "invert opacity-80"}`}
+          className={`h-10 ${isScrolled && "invert opacity-80"}`}
         />
       </Link>
 
