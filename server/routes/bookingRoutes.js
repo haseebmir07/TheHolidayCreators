@@ -1,17 +1,40 @@
-import express from 'express';
-import { protect } from '../middleware/authMiddleware.js';
-import { checkAvailabilityAPI, createBooking, getHotelBookings, getUserBookings, stripePayment ,getOwnerBookings} from '../controllers/bookingController.js';
+// server/routes/bookingRoutes.js
+import express from "express";
+import {
+  checkAvailabilityAPI,
+  createBooking,
+  getUserBookings,
+  getHotelBookings,
+  createRazorpayOrder,
+  verifyRazorpayPayment,
+} from "../controllers/bookingController.js";
 
-const bookingRouter = express.Router();
-
-bookingRouter.post('/check-availability', checkAvailabilityAPI);
-bookingRouter.post('/book', protect, createBooking);
-bookingRouter.get('/user', protect, getUserBookings);
-bookingRouter.get('/hotel', protect, getHotelBookings);
-bookingRouter.post('/stripe-payment', protect, stripePayment);
-
-bookingRouter.get("/owner", protect, getOwnerBookings);
+import { protect } from "../middleware/authMiddleware.js";
+import { deleteBooking } from "../controllers/bookingController.js";
 
 
+const router = express.Router();
 
-export default bookingRouter;
+// check availability
+router.post("/check-availability", checkAvailabilityAPI);
+
+// create booking (protected)
+router.post("/book", protect, createBooking);
+
+// get user bookings
+router.get("/user", protect, getUserBookings);
+
+// get hotel-owner bookings
+router.get("/hotel", protect, getHotelBookings);
+
+// Razorpay: create order
+router.post("/razorpay/order", protect, createRazorpayOrder);
+
+// Razorpay: verify payment
+router.post("/razorpay/verify", protect, verifyRazorpayPayment);
+
+// Delete booking
+router.delete("/:id", protect, deleteBooking);
+
+
+export default router;
