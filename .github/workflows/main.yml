@@ -2,7 +2,7 @@ name: Render - Keep Alive (Restart Service)
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'   # Runs every 5 minutes
   workflow_dispatch: {}
 
 jobs:
