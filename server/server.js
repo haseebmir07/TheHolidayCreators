@@ -1,4 +1,5 @@
-// server.js — Final fixed version (no app.options("*", ...))
+// ⭐ FINAL server.js — FULL WORKING VERSION (CORS FIXED + NO CRASHES)
+
 import express from "express";
 import "dotenv/config";
 import cors from "cors";
@@ -18,16 +19,18 @@ import { razorpayWebhookHandler } from "./controllers/bookingController.js";
 
 import { cloudinary } from "./configs/cloudinary.js";
 
+// DB Init
 connectDB();
 cloudinary;
 
-const app = express();
+// -----------------------------------------------------------------------------
+// ⭐ CORS SETUP (FINAL FIXED VERSION)
+// -----------------------------------------------------------------------------
 
-/* ------------------------------------
-   CORS SETUP (allowlist + safe preflight)
------------------------------------- */
+// Allowed frontend origins
 const allowedOrigins = [
-  process.env.FRONTEND_URL || "https://theholidaycreators.com",
+  "https://theholidaycreators.com",
+  "https://www.theholidaycreators.com",
   "https://theholidaycreators-1.onrender.com",
   "http://localhost:5173",
   "http://localhost:3000",
@@ -35,79 +38,89 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // allow requests with no origin (curl, webhook providers)
+    // allow server-to-server requests
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error("CORS not allowed for this origin."));
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.error("❌ Blocked CORS origin:", origin);
+    return callback(new Error("CORS not allowed for this origin"));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
-// Use CORS middleware (it will handle preflight automatically in most cases)
+// Apply cors
+const app = express();
 app.use(cors(corsOptions));
 
-// Add a small, explicit preflight handler to safely answer OPTIONS requests
-// This avoids calling app.options('*', ...) which in your environment triggered path-to-regexp.
+// ⭐ Safe handling of ALL OPTIONS preflight requests
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
-    // If the request included an Origin header, echo it if allowed (same logic as cors)
     const origin = req.headers.origin;
+
     if (!origin || allowedOrigins.includes(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin || "*");
-      res.setHeader("Access-Control-Allow-Methods", corsOptions.methods.join(","));
-      res.setHeader("Access-Control-Allow-Headers", corsOptions.allowedHeaders.join(","));
-      if (corsOptions.credentials) {
-        res.setHeader("Access-Control-Allow-Credentials", "true");
-      }
-      return res.sendStatus(204);
-    } else {
-      return res.sendStatus(403);
+      res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+      );
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization"
+      );
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      return res.status(204).end();
     }
+
+    return res.status(403).end();
   }
   next();
 });
 
-/* ------------------------------------
-   RAW BODY ROUTES (Stripe & Razorpay) - BEFORE express.json()
------------------------------------- */
+// -----------------------------------------------------------------------------
+// ⭐ RAW WEBHOOK ROUTES (must be BEFORE express.json())
+// -----------------------------------------------------------------------------
 
-// Stripe Webhook (raw body required)
+// STRIPE WEBHOOK
 app.post(
   "/api/stripe",
   express.raw({ type: "application/json" }),
   (req, res) => stripeWebhooks(req, res)
 );
 
-// Razorpay Webhook (raw body required)
+// RAZORPAY WEBHOOK
 app.post(
   "/api/razorpay-webhook",
   express.raw({ type: "application/json" }),
   (req, res) => {
     try {
-      req.rawBody = req.body instanceof Buffer ? req.body.toString("utf8") : "";
+      req.rawBody =
+        req.body instanceof Buffer ? req.body.toString("utf8") : "";
       req.body = JSON.parse(req.rawBody || "{}");
-    } catch (err) {
-      // fallback: leave req.body as whatever it is
-    }
+    } catch (err) {}
+
     return razorpayWebhookHandler(req, res);
   }
 );
 
-/* ------------------------------------
-   Normal JSON parsing, middleware, routes
------------------------------------- */
+// -----------------------------------------------------------------------------
+// ⭐ NORMAL ROUTES (after raw handlers)
+// -----------------------------------------------------------------------------
+
 app.use(express.json());
 app.use(clerkMiddleware());
 
-// Clerk webhook (Svix)
+// Clerk webhook
 app.use("/api/clerk", clerkWebhooks);
 
-// Basic health
+// Health check
 app.get("/", (req, res) => res.send("API is working"));
 
-// Main routes
+// REST API ROUTES
 app.use("/api/user", userRouter);
 app.use("/api/hotels", hotelRouter);
 app.use("/api/rooms", roomRouter);
@@ -115,18 +128,24 @@ app.use("/api/bookings", bookingRouter);
 app.use("/api/owner", ownerRoutes);
 app.use("/api/admin", adminRoutes);
 
-/* ------------------------------------
-   Error handling
------------------------------------- */
+// -----------------------------------------------------------------------------
+// ⭐ GLOBAL ERROR HANDLER
+// -----------------------------------------------------------------------------
 app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err && err.stack ? err.stack : err);
+  console.error("🔥 SERVER ERROR:", err);
   if (res.headersSent) return next(err);
-  const message = err && err.message ? err.message : "Server error";
-  res.status(500).json({ success: false, message });
+
+  res.status(500).json({
+    success: false,
+    message: err?.message || "Server error",
+  });
 });
 
-/* ------------------------------------
-   Start server
------------------------------------- */
+// -----------------------------------------------------------------------------
+// ⭐ START SERVER
+// -----------------------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+app.listen(PORT, () =>
+  console.log(`🚀 Server running on port ${PORT}`)
+);
