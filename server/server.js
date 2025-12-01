@@ -247,6 +247,7 @@
 
 // server.js (FULL file - replace your existing server.js)
 // server.js (defensive version - paste/replace your current server.js)
+// server.js (FULL file - replace your current server.js)
 import express from "express";
 import "dotenv/config";
 import cors from "cors";
@@ -260,19 +261,25 @@ import clerkWebhooks from "./controllers/clerkWebhooks.js";
 import { cloudinary } from "./configs/cloudinary.js";
 import { stripeWebhooks } from "./controllers/stripeWebhooks.js";
 
-// RAZORPAY webhook handler
+// Razorpay webhook handler (from bookingController)
 import { razorpayWebhookHandler } from "./controllers/bookingController.js";
 
 import ownerRoutes from "./routes/ownerRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 
 connectDB();
-cloudinary;
+cloudinary; // keep initialization if your config module performs setup
 
 const app = express();
 
+/**
+ * CORS setup
+ * - allowlist of known origins (add any extra frontend URLs here)
+ * - reflect the Origin header only when it's allowed
+ * - allow requests with no Origin (webhooks, curl, server-to-server)
+ */
 const allowedOrigins = [
-  "https://theholidaycreators.com",
+  process.env.FRONTEND_URL || "https://theholidaycreators.com",
   "https://theholidaycreators-1.onrender.com",
   "http://localhost:5173",
   "http://localhost:3000",
@@ -280,6 +287,7 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
+    // allow requests with no origin (e.g., server-to-server webhooks, curl)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
     return callback(new Error("CORS policy: This origin is not allowed"));
@@ -290,93 +298,85 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
+// Apply CORS globally
 app.use(cors(corsOptions));
+// Handle preflight for all routes
 app.options("*", cors(corsOptions));
 
-// ---------- helper to safely register routes ----------
-function safeRegister(method, pathOrHandler, handlerMaybe) {
-  // method: "use" or "get" etc.
-  // support both app.use(path, handler) and app.use(handler)
-  try {
-    if (typeof pathOrHandler === "string") {
-      // validate the path - must start with '/' or be '*' or a RegExp
-      const isPathLike =
-        pathOrHandler === "*" ||
-        pathOrHandler.startsWith("/") ||
-        pathOrHandler instanceof RegExp;
-      if (!isPathLike) {
-        throw new Error(
-          `Invalid route path detected for app.${method}(): "${pathOrHandler}". Route paths must start with "/" (or be "*"/RegExp).`
-        );
-      }
-      // register with the app
-      app[method](pathOrHandler, handlerMaybe);
-      console.log(`Registered app.${method}("${pathOrHandler}")`);
-    } else {
-      // pathOrHandler is actually the handler (no path supplied)
-      app[method](pathOrHandler);
-      console.log(`Registered app.${method}(<handler>)`);
-    }
-  } catch (err) {
-    // give a verbose message so you can find which import is wrong
-    console.error("Failed to register route:", {
-      method,
-      pathOrHandlerSnippet:
-        typeof pathOrHandler === "string"
-          ? pathOrHandler
-          : pathOrHandler && pathOrHandler.name
-          ? pathOrHandler.name
-          : String(pathOrHandler),
-      error: err.stack || err.message,
-    });
-    // rethrow so the process still exits (or comment the next line to continue)
-    throw err;
+// -----------------------------
+// STRIPE WEBHOOK (raw body)
+// Must be registered BEFORE express.json() so raw body is available
+// -----------------------------
+app.post(
+  "/api/stripe",
+  express.raw({ type: "application/json" }),
+  (req, res) => {
+    // Pass through to your controller function
+    return stripeWebhooks(req, res);
   }
-}
-// -------------------------------------------------------
+);
 
-// webhook raw handlers must be registered BEFORE express.json()
-safeRegister("post", "/api/stripe", express.raw({ type: "application/json" }), stripeWebhooks);
-
-// razorpay raw handler (same)
-safeRegister(
-  "post",
+// -----------------------------
+// RAZORPAY WEBHOOK (raw body)
+// Must be registered BEFORE express.json()
+// -----------------------------
+app.post(
   "/api/razorpay-webhook",
   express.raw({ type: "application/json" }),
   (req, res) => {
+    // convert raw Buffer to string then parse (safe fallback)
     try {
       req.rawBody = req.body instanceof Buffer ? req.body.toString("utf8") : "";
       req.body = JSON.parse(req.rawBody || "{}");
     } catch (err) {
-      // fallback
+      // fallback: leave req.body as-is if parsing fails
     }
     return razorpayWebhookHandler(req, res);
   }
 );
 
-// now enable JSON parsing
+// -----------------------------
+// Now enable JSON parsing for normal routes
+// -----------------------------
 app.use(express.json());
 
-// Clerk middleware
-safeRegister("use", clerkMiddleware());
+// Clerk middleware (auth)
+app.use(clerkMiddleware());
 
-// Clerk webhooks
-safeRegister("use", "/api/clerk", clerkWebhooks);
+// Clerk webhooks (Svix verification handler)
+app.use("/api/clerk", clerkWebhooks);
 
-// Main routes (safeRegister will validate path strings)
-safeRegister("get", "/", (req, res) => res.send("API is working"));
-safeRegister("use", "/api/user", userRouter);
-safeRegister("use", "/api/hotels", hotelRouter);
-safeRegister("use", "/api/rooms", roomRouter);
-safeRegister("use", "/api/bookings", bookingRouter);
-safeRegister("use", "/api/owner", ownerRoutes);
-safeRegister("use", "/api/admin", adminRoutes);
+// Main app routes
+app.get("/", (req, res) => res.send("API is working"));
 
-// global uncaught exception handler (helpful in prod logs)
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught exception:", err && err.stack ? err.stack : err);
-  process.exit(1);
+app.use("/api/user", userRouter);
+app.use("/api/hotels", hotelRouter);
+app.use("/api/rooms", roomRouter);
+app.use("/api/bookings", bookingRouter);
+app.use("/api/owner", ownerRoutes);
+app.use("/api/admin", adminRoutes);
+
+// Global error handler (simple)
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err && err.stack ? err.stack : err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ success: false, message: err && err.message ? err.message : "Server error" });
 });
+
+// Optional: handle unhandled rejections & uncaught exceptions (log + exit)
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled Rejection:", reason);
+  // Depending on your preference, you might exit or attempt graceful shutdown.
+  // process.exit(1);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err && err.stack ? err.stack : err);
+  // process.exit(1);
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
