@@ -1,131 +1,93 @@
-// ------------------------
-// Imports
-// ------------------------
-import express from "express";
-import "dotenv/config";
-import cors from "cors";
-import connectDB from "./configs/db.js";
+import { useAuth, useUser } from "@clerk/clerk-react";
+import { createContext, useContext, useEffect, useState } from "react";
+import axios from "axios";
+import { toast } from 'react-hot-toast'
+import { useNavigate } from "react-router-dom";
+import { assets } from "../assets/assets";
 
-import { clerkMiddleware } from "@clerk/express";
+axios.defaults.baseURL = import.meta.env.VITE_BACKEND_URL;
 
-import userRouter from "./routes/userRoutes.js";
-import hotelRouter from "./routes/hotelRoutes.js";
-import roomRouter from "./routes/roomRoutes.js";
-import bookingRouter from "./routes/bookingRoutes.js";
-import ownerRoutes from "./routes/ownerRoutes.js";
+const AppContext = createContext();
 
-import clerkWebhooks from "./controllers/clerkWebhooks.js";
-import { cloudinary } from "./configs/cloudinary.js";
-import { stripeWebhooks } from "./controllers/stripeWebhooks.js";
+export const AppProvider = ({ children }) => {
 
+    const currency = import.meta.env.VITE_CURRENCY || "$";
+    const navigate = useNavigate();
+    const { user } = useUser();
+    const { getToken } = useAuth()
 
-// ------------------------
-// Connect DB + Cloudinary
-// ------------------------
-connectDB();
-cloudinary;
+    const [isOwner, setIsOwner] = useState(false);
+    const [showHotelReg, setShowHotelReg] = useState(false);
+    const [rooms, setRooms] = useState([]);
+    const [searchedCities, setSearchedCities] = useState([]); // max 3 recent searched cities
 
+    const facilityIcons = {
+        "Free WiFi": assets.freeWifiIcon,
+        "Free Breakfast": assets.freeBreakfastIcon,
+        "Room Service": assets.roomServiceIcon,
+        "Mountain View": assets.mountainIcon,
+        "Pool Access": assets.poolIcon,
+    };
 
-// ------------------------
-// Express App
-// ------------------------
-const app = express();
+    const fetchUser = async () => {
+        try {
+            const { data } = await axios.get('/api/user', { headers: { Authorization: `Bearer ${await getToken()}` } })
+            if (data.success) {
+                setIsOwner(data.role === "hotelOwner");
+                setSearchedCities(data.recentSearchedCities)
+            } else {
+                // Retry Fetching User Details after 5 seconds
+                // Useful when user creates account using email & password
+                setTimeout(() => {
+                    fetchUser();
+                }, 2000);
+            }
+        } catch (error) {
+            toast.error(error.message)
+        }
+    }
 
+    const fetchRooms = async () => {
+        try {
+            const { data } = await axios.get('/api/rooms')
+            if (data.success) {
+                setRooms(data.rooms)
+            }
+            else {
+                toast.error(data.message)
+            }
+        } catch (error) {
+            toast.error(error.message)
+        }
+    }
 
-// ------------------------
-// Dynamic CORS Config
-// ------------------------
-const CLIENT_URL = process.env.CLIENT_URL || ""; // Optional strict mode
+    useEffect(() => {
+        if (user) {
+            fetchUser();
+        }
+    }, [user]);
 
-function originAllowed(origin) {
-  if (!origin) return true; // allow curl/postman/server-to-server
-  if (CLIENT_URL && origin === CLIENT_URL) return true; // strict allow
-  if (origin.endsWith(".onrender.com")) return true; // allow all Render frontend subdomains
-  return false;
-}
+    useEffect(() => {
+        fetchRooms();
+    }, []);
 
-app.use(express.json());
+    const value = {
+        currency, navigate,
+        user, getToken,
+        isOwner, setIsOwner,
+        axios,
+        showHotelReg, setShowHotelReg,
+        facilityIcons,
+        rooms, setRooms,
+        searchedCities, setSearchedCities
+    };
 
-// Main CORS middleware
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      const allowed = originAllowed(origin);
-      cb(null, allowed);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+    return (
+        <AppContext.Provider value={value}>
+            {children}
+        </AppContext.Provider>
+    );
 
-// Handle preflight
-app.options(
-  "*",
-  cors({
-    origin: (origin, cb) => cb(null, originAllowed(origin)),
-    credentials: true,
-  })
-);
+};
 
-
-// ------------------------
-// Request Logger (Very useful for Render debugging)
-// ------------------------
-app.use((req, res, next) => {
-  console.log(
-    `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} | Origin: ${
-      req.headers.origin || "none"
-    }`
-  );
-  next();
-});
-
-
-// ------------------------
-// Stripe Webhooks — MUST COME BEFORE express.json()
-// ------------------------
-app.post(
-  "/api/stripe/webhook",
-  express.raw({ type: "application/json" }),
-  stripeWebhooks
-);
-
-
-// ------------------------
-// Clerk Webhooks
-// ------------------------
-app.post("/api/clerk", clerkWebhooks);
-
-
-// ------------------------
-// Clerk Authentication Middleware
-// ------------------------
-app.use(clerkMiddleware());
-
-
-// ------------------------
-// REAL API Routes
-// ------------------------
-app.use("/api/user", userRouter);
-app.use("/api/hotels", hotelRouter);
-app.use("/api/rooms", roomRouter);
-app.use("/api/bookings", bookingRouter);
-app.use("/api/owner", ownerRoutes);
-
-
-// ------------------------
-// Health Check
-// ------------------------
-app.get("/_health", (req, res) => {
-  res.json({ status: "ok" });
-});
-
-
-// ------------------------
-// Start Server
-// ------------------------
-const port = process.env.PORT || 5000;
-app.listen(port, () => {
-  console.log(`⭐ Server running on port ${port}`);
-});
+export const useAppContext = () => useContext(AppContext);
