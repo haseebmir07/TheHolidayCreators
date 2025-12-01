@@ -110,12 +110,13 @@ import clerkWebhooks from "./controllers/clerkWebhooks.js";
 import { cloudinary } from "./configs/cloudinary.js";
 import { stripeWebhooks } from "./controllers/stripeWebhooks.js";
 
-// ⭐ NEW IMPORT (Razorpay Webhook Handler)
+// ⭐ RAZORPAY WEBHOOK IMPORT
 import { razorpayWebhookHandler } from "./controllers/bookingController.js";
 
 import ownerRoutes from "./routes/ownerRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 
+// Connect DB & Cloudinary
 connectDB();
 cloudinary;
 
@@ -123,19 +124,20 @@ const app = express();
 
 /*
 ===========================================
-   FIXED CORS — ALLOW BOTH DOMAINS
+   CORS — ALLOW LOCAL + RENDER + GODADDY
 ===========================================
 */
 const allowedOrigins = [
-  "https://theholidaycreators-1.onrender.com",   // Render frontend
-  "https://theholidaycreators.com",              // Custom domain
-  "https://www.theholidaycreators.com"           // WWW version
+  "http://localhost:5173",                        // Local development
+  "https://theholidaycreators-1.onrender.com",    // Render frontend
+  "https://theholidaycreators.com",               // GoDaddy custom domain
+  "https://www.theholidaycreators.com"            // WWW version
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // allow curl/postman
+      if (!origin) return callback(null, true); // allow Curl/Postman/no-origin
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
@@ -143,22 +145,26 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
+    allowedHeaders: ["Content-Type", "Authorization"]
   })
 );
 
-app.options("*", cors()); // Handle preflight requests globally
+app.options("*", cors()); // Preflight handling
 
 /*
 ===========================================
-   WEBHOOKS (raw body)
+   WEBHOOKS (must run before JSON parser)
 ===========================================
 */
 
-// ⭐ STRIPE WEBHOOK (raw body parser)
-app.post("/api/stripe", express.raw({ type: "application/json" }), stripeWebhooks);
+// ⭐ STRIPE WEBHOOK (uses raw body)
+app.post(
+  "/api/stripe",
+  express.raw({ type: "application/json" }),
+  stripeWebhooks
+);
 
-// ⭐ RAZORPAY WEBHOOK (raw body required)
+// ⭐ RAZORPAY WEBHOOK (raw)
 app.post(
   "/api/razorpay-webhook",
   express.raw({ type: "application/json" }),
@@ -173,7 +179,7 @@ app.post(
 
 /*
 ===========================================
-   NORMAL JSON BODY PARSING
+   JSON PARSER + CLERK MIDDLEWARE
 ===========================================
 */
 app.use(express.json());
@@ -198,5 +204,6 @@ app.use("/api/admin", adminRoutes);
 ===========================================
 */
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
