@@ -25,7 +25,7 @@ const AdminLayout = () => {
       <aside className="w-64 bg-white border-r border-slate-100 flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-slate-100">
           <span className="text-lg font-semibold tracking-tight">
-            QuickStay Admin
+            TheHolidayCreators-Admin
           </span>
         </div>
 
@@ -42,7 +42,7 @@ const AdminLayout = () => {
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-slate-900/5 text-xs">
               🏨
             </span>
-            <span>Hotels</span>
+            <span>Packages</span>
           </NavLink>
           <NavLink to="/admin/users" className={navItemClass}>
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-slate-900/5 text-xs">

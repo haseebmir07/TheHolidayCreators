@@ -10,7 +10,7 @@ const HotelCard = ({ room, index }) => {
   const hotelName = room?.hotel?.name || room?.name || "Hotel";
   const hotelLocation = room?.hotel?.city || room?.hotel?.address || "Unknown location";
   const price = room?.pricePerNight ?? room?.totalPrice ?? 0;
-  const rating = room?.rating ?? 4.5;
+  const rating = room?.rating ?? 4.9;
 
   return (
     <Link
@@ -21,7 +21,7 @@ const HotelCard = ({ room, index }) => {
       <div className="hotel-image-wrap">
         <img src={imgSrc} alt="hotel-img" className="hotel-image" draggable="false" />
         {index % 2 === 0 && (
-          <div className="hotel-badge">Best Seller</div>
+          <div className="hotel-badge"></div>
         )}
       </div>
 
@@ -45,7 +45,7 @@ const HotelCard = ({ room, index }) => {
           <div className="hotel-price">
             {currency}
             {price}
-            <small>/night</small>
+            <small>/Person</small>
           </div>
 
           <button

@@ -130,7 +130,7 @@ const AllRooms = () => {
             <div>
                 {/* Main Title */}
                 <div className="flex flex-col items-start text-left">
-                    <h1 className='font-playfair text-4xl md:text-[40px]'>Hotel Rooms</h1>
+                    <h1 className='font-playfair text-4xl md:text-[40px]'>Packages</h1>
                     <p className='text-sm md:text-base text-gray-500/90 mt-2 max-w-174'>Take advantage of our limited-time offers and special packages to enhance your stay and create unforgettable memories.</p>
                 </div>
 
@@ -159,7 +159,7 @@ const AllRooms = () => {
                                 ))}
                             </div>
                             {/* Room Price per Night */}
-                            <p className='text-xl font-medium text-gray-700'>${room.pricePerNight} /night</p>
+                            <p className='text-xl font-medium text-gray-700'>₹{room.pricePerNight} /Person</p>
                         </div>
                     </div>
                 ))}

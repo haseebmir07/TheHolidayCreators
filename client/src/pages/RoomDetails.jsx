@@ -1,3 +1,4 @@
+// RoomDetails.jsx
 import React, { useEffect, useState } from "react";
 import { assets } from "../assets/assets";
 import { useAppContext } from "../context/AppContext";
@@ -5,19 +6,23 @@ import { useParams } from "react-router-dom";
 import StarRating from "../components/StarRating";
 import toast from "react-hot-toast";
 
-/**
- * RoomDetails.jsx
- * - Top: large gallery
- * - Below: two-column content (left scrollable, right sticky booking panel)
- * - "What this place offers" items act like FAQ entries (click title to expand subtitle)
- *
- * NOTE: added top padding so content does not overlap fixed navbar,
- * and increased sticky offset for booking panel so it stays below navbar.
- */
+/* -----------------------------------------
+   Helper: load Razorpay script dynamically
+   ----------------------------------------- */
+function loadRazorpayScript(src = "https://checkout.razorpay.com/v1/checkout.js") {
+  return new Promise((resolve) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve(true);
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 const RoomDetails = () => {
   const { id } = useParams();
-  const { facilityIcons, rooms, getToken, axios, navigate } = useAppContext();
+  const { facilityIcons, rooms, getToken, axios, navigate, user, currency } = useAppContext();
 
   const [room, setRoom] = useState(null);
   const [mainImage, setMainImage] = useState(null);
@@ -29,6 +34,19 @@ const RoomDetails = () => {
   const [showBilling, setShowBilling] = useState(false);
   const [billingName, setBillingName] = useState("");
   const [billingPhone, setBillingPhone] = useState("");
+
+  // customization UI & data
+  const [showCustomize, setShowCustomize] = useState(false);
+  const [minGuests, setMinGuests] = useState(1);
+  const [maxGuests, setMaxGuests] = useState(500);
+  const [minDays, setMinDays] = useState(1);
+  const [maxDays, setMaxDays] = useState(90);
+  const [includedThings, setIncludedThings] = useState("");
+  const [customSaved, setCustomSaved] = useState(false);
+  const [customOptions, setCustomOptions] = useState(null);
+
+  // submission / loading state
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // FAQ open state for offers
   const [openOffers, setOpenOffers] = useState(new Set());
@@ -68,6 +86,7 @@ const RoomDetails = () => {
         return;
       }
 
+      setIsSubmitting(true);
       const { data } = await axios.post("/api/bookings/check-availability", {
         room: id,
         checkInDate,
@@ -89,12 +108,18 @@ const RoomDetails = () => {
       }
     } catch (err) {
       toast.error(err.message || "Server error");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const onSubmitHandler = async (e) => {
     try {
       e.preventDefault();
+
+      // prevent double submit
+      if (isSubmitting) return;
+
       if (!isAvailable) {
         return checkAvailability();
       }
@@ -103,6 +128,8 @@ const RoomDetails = () => {
         toast.error("Please enter billing name & phone");
         return;
       }
+
+      setIsSubmitting(true);
 
       const { data } = await axios.post(
         "/api/bookings/book",
@@ -114,24 +141,158 @@ const RoomDetails = () => {
           paymentMethod: "Pay At Hotel",
           billingName,
           billingPhone,
+          // attach customization options if present
+          customization: customOptions || undefined,
         },
         { headers: { Authorization: `Bearer ${await getToken()}` } }
       );
 
+      // ---------- NEW: Razorpay flow after booking creation ----------
       if (data.success) {
-        toast.success(data.message);
-        navigate("/my-bookings");
+        const bookingId = data.bookingId || data.booking?._id || data._id;
+
+        toast.success("Booking created. Opening payment...");
+
+        // Load Razorpay SDK
+        const scriptOk = await loadRazorpayScript();
+        if (!scriptOk) {
+          toast.error("Failed to load payment SDK");
+          // still navigate to bookings so user can retry or pay from "My Bookings"
+          setIsSubmitting(false);
+          return navigate("/my-bookings");
+        }
+
+        // create order on server
+        const orderResp = await axios.post(
+          "/api/bookings/razorpay/order",
+          { bookingId },
+          { headers: { Authorization: `Bearer ${await getToken()}` } }
+        );
+
+        if (!orderResp.data.success) {
+          toast.error(orderResp.data.message || "Failed to create payment order");
+          setIsSubmitting(false);
+          return navigate("/my-bookings");
+        }
+
+        const { orderId, amount, currency: orderCurrency, key } = orderResp.data;
+
+        const options = {
+          key, // Razorpay key id
+          amount, // in smallest currency unit (paise)
+          currency: orderCurrency,
+          name: "The Holiday Creators",
+          description: "Booking payment",
+          order_id: orderId,
+          handler: async function (response) {
+            // response contains razorpay_payment_id, razorpay_order_id, razorpay_signature
+            try {
+              const verifyResp = await axios.post(
+                "/api/bookings/razorpay/verify",
+                {
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_signature: response.razorpay_signature,
+                  bookingId,
+                },
+                { headers: { Authorization: `Bearer ${await getToken()}` } }
+              );
+
+              if (verifyResp.data.success) {
+                toast.success("Payment successful — booking confirmed");
+                setIsSubmitting(false);
+                navigate("/my-bookings");
+              } else {
+                toast.error(verifyResp.data.message || "Payment verification failed");
+                setIsSubmitting(false);
+                navigate("/my-bookings");
+              }
+            } catch (err) {
+              toast.error("Payment verification failed");
+              setIsSubmitting(false);
+              navigate("/my-bookings");
+            }
+          },
+          prefill: {
+            name: billingName || (user && user.username) || "",
+            email: (user && user.email) || "",
+            contact: billingPhone || "",
+          },
+          notes: { bookingId },
+          theme: { color: "#F72585" },
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.on("payment.failed", function (resp) {
+          console.error("Razorpay payment failed:", resp);
+          toast.error("Payment failed or canceled. You can retry from My Bookings.");
+          setIsSubmitting(false);
+          navigate("/my-bookings");
+        });
+        rzp.open();
+        return;
       } else {
-        toast.error(data.message);
+        toast.error(data.message || "Booking failed");
       }
     } catch (err) {
       toast.error(err.message || "Booking failed");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   if (!room) return null;
 
   const offers = room.whatThisPlaceOffers || [];
+
+  // small spinner SVG (keeps Tailwind styling)
+  const Spinner = ({ className = "w-4 h-4 mr-2" }) => (
+    <svg className={`${className} animate-spin`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+  );
+
+  // customization submit
+  const handleCustomizeSave = (e) => {
+    e.preventDefault();
+    // basic validation
+    if (minGuests <= 0 || maxGuests <= 0 || minDays <= 0 || maxDays <= 0) {
+      toast.error("Values must be positive");
+      return;
+    }
+    if (minGuests > maxGuests) {
+      toast.error("Min guests cannot be greater than max guests");
+      return;
+    }
+    if (minDays > maxDays) {
+      toast.error("Min days cannot be greater than max days");
+      return;
+    }
+
+    const opts = {
+      guestsRange: { min: Number(minGuests), max: Number(maxGuests) },
+      daysRange: { min: Number(minDays), max: Number(maxDays) },
+      included: includedThings.trim(),
+      savedAt: new Date().toISOString(),
+    };
+
+    setCustomOptions(opts);
+    setCustomSaved(true);
+    setShowCustomize(false);
+    toast.success("Customization saved — it will be attached to booking");
+  };
+
+  const handleClearCustomization = () => {
+    setMinGuests(1);
+    setMaxGuests(500);
+    setMinDays(1);
+    setMaxDays(90);
+    setIncludedThings("");
+    setCustomOptions(null);
+    setCustomSaved(false);
+    toast.success("Customization cleared");
+  };
 
   return (
     // Add top padding so content doesn't overlap the fixed navbar.
@@ -231,7 +392,7 @@ const RoomDetails = () => {
 
             {/* WHAT THIS PLACE OFFERS - two column list with FAQ toggle */}
             <div className="mb-6">
-              <h3 className="text-xl font-semibold mb-4">What this place offers</h3>
+              <h3 className="text-xl font-semibold mb-4">Day-Wise Itinerary</h3>
 
               {offers.length === 0 ? (
                 <div className="text-sm text-slate-500 mb-4">No offerings listed for this room.</div>
@@ -315,7 +476,7 @@ const RoomDetails = () => {
                 {room.hotel?.owner?.name?.[0] || "H"}
               </div>
               <div>
-                <div className="font-medium">Hosted by {room.hotel?.name}</div>
+                <div className="font-medium">Hosted by TheHolidayCreators</div>
                 <div className="text-sm text-slate-500">200+ reviews</div>
               </div>
             </div>
@@ -329,43 +490,196 @@ const RoomDetails = () => {
             {/* increased top offset so the panel starts below the navbar on most screen sizes */}
             <div className="sticky top-32 md:top-28">
               <div className="border rounded-lg p-6 shadow-md bg-white">
-                <div className="text-2xl font-semibold mb-1">₹{room.pricePerNight}</div>
-                <div className="text-sm text-slate-500 mb-3">per night</div>
+                {/* ===== Toggle switch for customization (new) ===== */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-sm font-medium text-slate-700">Customize</div>
+                  <label className="inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={showCustomize}
+                      onChange={() => setShowCustomize((s) => !s)}
+                    />
+                    <div className={`w-11 h-6 rounded-full transition-colors ${showCustomize ? "bg-pink-600" : "bg-gray-200"}`} />
+                    <span className="ml-2 text-xs text-slate-500">{showCustomize ? "Open" : "Off"}</span>
+                  </label>
+                </div>
+
+                {/* customization form - collapsible */}
+                <div className={`overflow-hidden transition-all ${showCustomize ? "max-h-[400px] opacity-100 mb-4" : "max-h-0 opacity-0 h-0"}`}>
+                  <form onSubmit={handleCustomizeSave} className="space-y-2">
+                    <div>
+                      <label className="text-xs font-medium block mb-1">Guests (min - max)</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          value={minGuests}
+                          onChange={(e) => setMinGuests(e.target.value)}
+                          className="w-1/2 border rounded px-3 py-2"
+                        />
+                        <input
+                          type="number"
+                          min={1}
+                          value={maxGuests}
+                          onChange={(e) => setMaxGuests(e.target.value)}
+                          className="w-1/2 border rounded px-3 py-2"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium block mb-1">Days (min - max)</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          value={minDays}
+                          onChange={(e) => setMinDays(e.target.value)}
+                          className="w-1/2 border rounded px-3 py-2"
+                        />
+                        <input
+                          type="number"
+                          min={1}
+                          value={maxDays}
+                          onChange={(e) => setMaxDays(e.target.value)}
+                          className="w-1/2 border rounded px-3 py-2"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium block mb-1">Include (things/requests)</label>
+                      <textarea
+                        value={includedThings}
+                        onChange={(e) => setIncludedThings(e.target.value)}
+                        placeholder="itinerary changes eg. Add 2N stay at desired location."
+                        className="w-full border rounded px-3 py-2"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button type="submit" className="flex-1 bg-pink-600 text-white rounded py-2">
+                        Save customization
+                      </button>
+                      <button type="button" onClick={handleClearCustomization} className="flex-1 border rounded py-2">
+                        Clear
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="text-2xl font-semibold mb-1">{currency}{room.pricePerNight}</div>
+                <div className="text-sm text-slate-500 mb-3">/Person</div>
 
                 <form onSubmit={onSubmitHandler} className="space-y-3">
                   <div>
                     <label className="text-xs font-medium block mb-1">Check-in</label>
-                    <input type="date" value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} min={new Date().toISOString().split("T")[0]} className="w-full border rounded px-3 py-2" />
+                    <input
+                      type="date"
+                      value={checkInDate}
+                      onChange={(e) => setCheckInDate(e.target.value)}
+                      min={new Date().toISOString().split("T")[0]}
+                      className="w-full border rounded px-3 py-2"
+                      disabled={isSubmitting}
+                    />
                   </div>
 
                   <div>
                     <label className="text-xs font-medium block mb-1">Check-out</label>
-                    <input type="date" value={checkOutDate} onChange={(e) => setCheckOutDate(e.target.value)} min={checkInDate || new Date().toISOString().split("T")[0]} className="w-full border rounded px-3 py-2" />
+                    <input
+                      type="date"
+                      value={checkOutDate}
+                      onChange={(e) => setCheckOutDate(e.target.value)}
+                      min={checkInDate || new Date().toISOString().split("T")[0]}
+                      className="w-full border rounded px-3 py-2"
+                      disabled={isSubmitting}
+                    />
                   </div>
 
-                  <div>
-                    <label className="text-xs font-medium block mb-1">Guests</label>
-                    <select value={guests} onChange={(e) => setGuests(e.target.value)} className="w-full border rounded px-3 py-2">
-                      <option value={1}>1 guest</option>
-                      <option value={2}>2 guests</option>
-                      <option value={3}>3 guests</option>
-                      <option value={4}>4 guests</option>
-                    </select>
-                  </div>
+                <div>
+  <label className="text-xs font-medium block mb-1">Guests</label>
 
-                  <button type="submit" className="w-full bg-pink-600 hover:opacity-95 text-white rounded py-3 mt-2">
-                    {isAvailable ? "Book Now" : "Check availability"}
+  <div className="flex items-center gap-2 border rounded px-3 py-2 w-full">
+    {/* Decrease Button */}
+    <button
+      type="button"
+      onClick={() => setGuests(prev => Math.max(1, prev - 1))}
+      disabled={isSubmitting}
+      className="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300"
+    >
+      −
+    </button>
+
+    {/* Display Guest Count */}
+    <span className="flex-1 text-center">{guests} guest{guests > 1 ? "s" : ""}</span>
+
+    {/* Increase Button */}
+    <button
+      type="button"
+      onClick={() => setGuests(prev => Math.min(500, prev + 1))}
+      disabled={isSubmitting}
+      className="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300"
+    >
+      +
+    </button>
+  </div>
+</div>
+
+
+                  <button
+                    type="submit"
+                    className={`w-full ${isSubmitting ? "bg-pink-700 cursor-not-allowed" : "bg-pink-600 hover:opacity-95"} text-white rounded py-3 mt-2 inline-flex items-center justify-center`}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Spinner />
+                        <span>{isAvailable ? "Booking..." : "Checking..."}</span>
+                      </>
+                    ) : (
+                      <span>{isAvailable ? "Book Now" : "Check availability"}</span>
+                    )}
                   </button>
 
                   <p className="text-xs text-slate-400 mt-2">You won't be charged yet</p>
                 </form>
 
+                {/* show small customization summary if saved */}
+                {customSaved && customOptions && (
+                  <div className="mt-4 border-t pt-3 text-sm text-slate-700">
+                    <div className="font-medium mb-1">Customization saved</div>
+                    <div>Guests: {customOptions.guestsRange.min} - {customOptions.guestsRange.max}</div>
+                    <div>Days: {customOptions.daysRange.min} - {customOptions.daysRange.max}</div>
+                    {customOptions.included ? <div>Include: {customOptions.included}</div> : null}
+                    <div className="mt-2">
+                      <button onClick={() => { setShowCustomize(true); setCustomSaved(false); }} className="text-xs underline">Edit customization</button>
+                      <button onClick={handleClearCustomization} className="ml-3 text-xs text-red-600">Remove</button>
+                    </div>
+                  </div>
+                )}
+
                 {/* billing form (appears after availability confirmed) */}
                 {showBilling && (
                   <div className="mt-4">
                     <div className="text-sm font-medium">Billing info</div>
-                    <input type="text" placeholder="Full name" value={billingName} onChange={(e) => setBillingName(e.target.value)} className="w-full border rounded px-3 py-2 mt-2" />
-                    <input type="tel" placeholder="Phone" value={billingPhone} onChange={(e) => setBillingPhone(e.target.value)} className="w-full border rounded px-3 py-2 mt-2" />
+                    <input
+                      type="text"
+                      placeholder="Full name"
+                      value={billingName}
+                      onChange={(e) => setBillingName(e.target.value)}
+                      className="w-full border rounded px-3 py-2 mt-2"
+                      disabled={isSubmitting}
+                    />
+                    <input
+                      type="tel"
+                      placeholder="Phone"
+                      value={billingPhone}
+                      onChange={(e) => setBillingPhone(e.target.value)}
+                      className="w-full border rounded px-3 py-2 mt-2"
+                      disabled={isSubmitting}
+                    />
                   </div>
                 )}
               </div>

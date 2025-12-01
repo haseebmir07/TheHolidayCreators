@@ -428,7 +428,7 @@ const AdminHotels = () => {
 
   return (
     <div className="p-6">
-      <Title title="Admin — Hotels" subTitle="Manage hotels and rooms (create, edit, delete). Image upload supported." align="left" />
+      <Title title="Admin — Packages" subTitle="Manage Packages" align="left" />
 
       <div className="mt-4 space-y-4">
         {loadingHotels ? <div>Loading hotels...</div> : hotels.length === 0 ? <div className="text-sm text-slate-500">No hotels found.</div> : hotels.map((hotel) => {

@@ -37,6 +37,13 @@ import listIcon from "./listIcon.svg";
 import uploadArea from "./uploadArea.svg";
 import totalBookingIcon from "./totalBookingIcon.svg";
 import totalRevenueIcon from "./totalRevenueIcon.svg";
+// src/assets/assets.js (example snippet)
+import hero1 from "./heroImage.jpeg";
+import hero2 from "./heroImage-2.jpeg";
+import hero3 from "./heroImage-3.jpeg";
+import hero4 from "./heroImage-4.jpeg";
+import hero5 from "./heroImage-5.jpeg";
+
 
 
 export const assets = {
@@ -72,13 +79,17 @@ export const assets = {
     uploadArea,
     totalBookingIcon,
     totalRevenueIcon,
+     calenderIcon,
+  searchIcon,
+  // add this:
+  heroImages: [hero1, hero2, hero3, hero4, hero5],
 }
 
 export const cities = [
-    "Dubai",
-    "Singapore",
-    "New York",
-    "London",
+    "Jammu & Kashmir",
+    "Ladakh",
+    "Amritsar",
+    "Manali",
 ];
 
 // Exclusive Offers Dummy Data

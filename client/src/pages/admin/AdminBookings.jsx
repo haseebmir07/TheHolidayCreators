@@ -39,18 +39,41 @@ export default function AdminBookings() {
             </p>
           </div>
 
-          <div className="flex gap-2">
-            {!b.isPaid && (
-              <button onClick={() => markPaid(b._id)} className="px-3 py-1 bg-green-500 text-white rounded text-sm">
-                Mark Paid
-              </button>
-            )}
-            {b.status !== "cancelled" && (
-              <button onClick={() => cancelBooking(b._id)} className="px-3 py-1 bg-red-500 text-white rounded text-sm">
-                Cancel
-              </button>
-            )}
-          </div>
+        <div className="flex gap-2">
+  {!b.isPaid && (
+    <button
+      onClick={() => markPaid(b._id)}
+      className="px-3 py-1 bg-green-500 text-white rounded text-sm"
+    >
+      Mark Paid
+    </button>
+  )}
+
+  {b.status !== "cancelled" && (
+    <button
+      onClick={() => cancelBooking(b._id)}
+      className="px-3 py-1 bg-red-500 text-white rounded text-sm"
+    >
+      Cancel
+    </button>
+  )}
+
+  {/* DELETE BUTTON */}
+  <button
+    onClick={async () => {
+      if (!window.confirm("Delete this booking permanently?")) return;
+      await axios.delete(`/api/bookings/${b._id}`, { 
+        headers: { Authorization: `Bearer ${await getToken()}` } 
+      });
+      toast.success("Booking deleted");
+      load();
+    }}
+    className="px-3 py-1 bg-black text-white rounded text-sm"
+  >
+    Delete
+  </button>
+</div>
+
         </div>
       ))}
     </div>
