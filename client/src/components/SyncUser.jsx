@@ -1,29 +1,25 @@
 // client/src/components/SyncUser.jsx
 import { useEffect } from "react";
-import { useUser, useAuth } from "@clerk/clerk-react";
+import { useUser } from "@clerk/clerk-react";
+import { useAppContext } from "../context/AppContext";
 
 export default function SyncUser() {
   const { isLoaded, isSignedIn } = useUser();
-  const { getToken } = useAuth();
+  const { axios } = useAppContext(); // axios is the api instance from AppContext
 
   useEffect(() => {
     const sync = async () => {
       if (!isLoaded || !isSignedIn) return;
       try {
-        await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/user/sync`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${await getToken()}`, // <-- important
-          },
-          // credentials: "include", // not needed if you pass the token
-        });
+        // use relative path — axios will prepend VITE_BACKEND_URL
+        await axios.post("/api/user/sync");
       } catch (err) {
         console.error("User sync failed:", err);
       }
     };
     sync();
-  }, [isLoaded, isSignedIn, getToken]);
+    // axios is stable (useMemo in AppContext) so safe to include in deps
+  }, [isLoaded, isSignedIn, axios]);
 
   return null;
 }
