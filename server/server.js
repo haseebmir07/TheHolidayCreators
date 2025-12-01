@@ -123,7 +123,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: "http://localhost:5173", // exact origin, not '*'
+    origin: "https://theholidaycreators-1.onrender.com", // exact origin, not '*'
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
