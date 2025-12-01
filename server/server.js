@@ -195,7 +195,6 @@
 // const PORT = process.env.PORT || 3000;
 // app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-
 import express from "express";
 import "dotenv/config";
 import cors from "cors";
@@ -208,7 +207,10 @@ import bookingRouter from "./routes/bookingRoutes.js";
 import clerkWebhooks from "./controllers/clerkWebhooks.js";
 import { cloudinary } from "./configs/cloudinary.js";
 import { stripeWebhooks } from "./controllers/stripeWebhooks.js";
+
+// ⭐ NEW IMPORT (Razorpay Webhook Handler)
 import { razorpayWebhookHandler } from "./controllers/bookingController.js";
+
 import ownerRoutes from "./routes/ownerRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 
@@ -219,27 +221,42 @@ const app = express();
 
 /*
 ===========================================
-   CORS — ALLOW ALL DOMAINS
+   CORS — whitelist (localhost + Render + GoDaddy)
 ===========================================
 */
+const allowedOrigins = [
+  "http://localhost:5173",                        // Local development
+  "https://theholidaycreators-1.onrender.com",    // Render frontend
+  "https://theholidaycreators.com",               // GoDaddy custom domain
+  "https://www.theholidaycreators.com"            // WWW version
+];
+
 app.use(
   cors({
-    origin: (origin, callback) => callback(null, true), // Allow every domain
+    origin: function (origin, callback) {
+      // allow requests with no origin (like curl/postman)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("CORS blocked: Origin not allowed"), false);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-app.options("*", cors());
+app.options("*", cors()); // Handle preflight requests globally
 
-/*
-===========================================
-   WEBHOOKS (raw body)
-===========================================
-*/
+// -----------------------------
+// ⭐ STRIPE WEBHOOK (raw body)
+// -----------------------------
 app.post("/api/stripe", express.raw({ type: "application/json" }), stripeWebhooks);
 
+// -----------------------------
+// ⭐ RAZORPAY WEBHOOK (raw body)
+// -----------------------------
 app.post(
   "/api/razorpay-webhook",
   express.raw({ type: "application/json" }),
@@ -247,24 +264,23 @@ app.post(
     try {
       req.rawBody = req.body instanceof Buffer ? req.body.toString("utf8") : "";
       req.body = JSON.parse(req.rawBody || "{}");
-    } catch (err) {}
+    } catch (err) {
+      // fallback
+    }
     return razorpayWebhookHandler(req, res);
   }
 );
 
-/*
-===========================================
-   JSON + CLERK
-===========================================
-*/
+// -----------------------------
+// Now enable JSON parsing
+// -----------------------------
 app.use(express.json());
 app.use(clerkMiddleware());
 
-/*
-===========================================
-   ROUTES
-===========================================
-*/
+// Clerk Webhooks
+app.use("/api/clerk", clerkWebhooks);
+
+// Main Routes
 app.get("/", (req, res) => res.send("API is working"));
 app.use("/api/user", userRouter);
 app.use("/api/hotels", hotelRouter);
@@ -273,10 +289,5 @@ app.use("/api/bookings", bookingRouter);
 app.use("/api/owner", ownerRoutes);
 app.use("/api/admin", adminRoutes);
 
-/*
-===========================================
-   START SERVER
-===========================================
-*/
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
