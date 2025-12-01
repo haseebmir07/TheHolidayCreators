@@ -142,6 +142,8 @@ export const AppProvider = ({ children }) => {
     );
 
 };
+console.log("API baseURL:", api.defaults.baseURL || import.meta.env.VITE_BACKEND_URL)
+
 
 export const useAppContext = () => useContext(AppContext);
 export default AppContext;
