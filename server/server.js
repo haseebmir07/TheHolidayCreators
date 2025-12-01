@@ -74,7 +74,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: "https://theholidaycreators-1.onrender.com",
+    origin: "*",
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
