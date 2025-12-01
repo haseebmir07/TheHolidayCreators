@@ -245,6 +245,7 @@
 // app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 
+// server.js (FULL file - replace your existing server.js)
 import express from "express";
 import "dotenv/config";
 import cors from "cors";
@@ -269,17 +270,43 @@ cloudinary;
 
 const app = express();
 
-app.use(
-  cors({
-    origin: "https://theholidaycreators-1.onrender.com", // exact origin, not '*'
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+/**
+ * CORS setup
+ * - allowlist of known origins
+ * - reflect the Origin header only when it's allowed
+ * - allow requests with no Origin (webhooks, curl, server-to-server)
+ */
+const allowedOrigins = [
+  "https://theholidaycreators.com",
+  "https://theholidaycreators-1.onrender.com",
+  "http://localhost:5173",
+  "http://localhost:3000"
+  // add any other frontend/dev URLs you use
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // origin === undefined when request comes from server-side (curl, webhook providers, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error("CORS policy: This origin is not allowed"));
+  },
+  credentials: true, // keep true if frontend uses cookies/auth
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204
+};
+
+// Apply CORS globally
+app.use(cors(corsOptions));
+// Ensure preflight (OPTIONS) requests are handled for all routes
+app.options("*", cors(corsOptions));
 
 // -----------------------------
 // ⭐ STRIPE WEBHOOK (raw body)
+// Must be before express.json() so raw body is available.
 // -----------------------------
 app.post("/api/stripe", express.raw({ type: "application/json" }), stripeWebhooks);
 
@@ -294,16 +321,18 @@ app.post(
       req.rawBody = req.body instanceof Buffer ? req.body.toString("utf8") : "";
       req.body = JSON.parse(req.rawBody || "{}");
     } catch (err) {
-      // fallback
+      // fallback (req.body may already be parsed)
     }
     return razorpayWebhookHandler(req, res);
   }
 );
 
 // -----------------------------
-// Now enable JSON parsing
+// Now enable JSON parsing for regular routes
 // -----------------------------
 app.use(express.json());
+
+// Clerk middleware (auth)
 app.use(clerkMiddleware());
 
 // Clerk Webhooks
@@ -320,4 +349,3 @@ app.use("/api/admin", adminRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
