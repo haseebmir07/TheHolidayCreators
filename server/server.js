@@ -253,33 +253,31 @@ import "dotenv/config";
 import cors from "cors";
 import connectDB from "./configs/db.js";
 import { clerkMiddleware } from "@clerk/express";
+
 import userRouter from "./routes/userRoutes.js";
 import hotelRouter from "./routes/hotelRoutes.js";
 import roomRouter from "./routes/roomRoutes.js";
 import bookingRouter from "./routes/bookingRoutes.js";
-import clerkWebhooks from "./controllers/clerkWebhooks.js";
-import { cloudinary } from "./configs/cloudinary.js";
-import { stripeWebhooks } from "./controllers/stripeWebhooks.js";
-
-// Razorpay webhook handler (from bookingController)
-import { razorpayWebhookHandler } from "./controllers/bookingController.js";
-
 import ownerRoutes from "./routes/ownerRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 
+import clerkWebhooks from "./controllers/clerkWebhooks.js";
+import { stripeWebhooks } from "./controllers/stripeWebhooks.js";
+import { razorpayWebhookHandler } from "./controllers/bookingController.js";
+
+import { cloudinary } from "./configs/cloudinary.js";
+
+// DB & Cloud Init
 connectDB();
-cloudinary; // keep initialization if your config module performs setup
+cloudinary;
 
 const app = express();
 
-/**
- * CORS setup
- * - allowlist of known origins (add any extra frontend URLs here)
- * - reflect the Origin header only when it's allowed
- * - allow requests with no Origin (webhooks, curl, server-to-server)
- */
+/* ------------------------------------
+   CORS SETUP (fixed & safe)
+------------------------------------ */
 const allowedOrigins = [
-  process.env.FRONTEND_URL || "https://theholidaycreators.com",
+  "https://theholidaycreators.com",
   "https://theholidaycreators-1.onrender.com",
   "http://localhost:5173",
   "http://localhost:3000",
@@ -287,66 +285,58 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // allow requests with no origin (e.g., server-to-server webhooks, curl)
-    if (!origin) return callback(null, true);
+    if (!origin) return callback(null, true); // allow server-to-server calls
     if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error("CORS policy: This origin is not allowed"));
+    return callback(new Error("CORS not allowed for this origin."));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 204,
 };
 
-// Apply CORS globally
+// apply cors
 app.use(cors(corsOptions));
-// Handle preflight for all routes
 app.options("*", cors(corsOptions));
 
-// -----------------------------
-// STRIPE WEBHOOK (raw body)
-// Must be registered BEFORE express.json() so raw body is available
-// -----------------------------
+/* ------------------------------------
+   RAW BODY ROUTES (Stripe & Razorpay)
+   MUST COME BEFORE express.json()
+------------------------------------ */
+
+// Stripe Webhook (RAW)
 app.post(
   "/api/stripe",
   express.raw({ type: "application/json" }),
-  (req, res) => {
-    // Pass through to your controller function
-    return stripeWebhooks(req, res);
-  }
+  (req, res) => stripeWebhooks(req, res)
 );
 
-// -----------------------------
-// RAZORPAY WEBHOOK (raw body)
-// Must be registered BEFORE express.json()
-// -----------------------------
+// Razorpay Webhook (RAW)
 app.post(
   "/api/razorpay-webhook",
   express.raw({ type: "application/json" }),
   (req, res) => {
-    // convert raw Buffer to string then parse (safe fallback)
     try {
       req.rawBody = req.body instanceof Buffer ? req.body.toString("utf8") : "";
       req.body = JSON.parse(req.rawBody || "{}");
-    } catch (err) {
-      // fallback: leave req.body as-is if parsing fails
-    }
+    } catch (err) {}
     return razorpayWebhookHandler(req, res);
   }
 );
 
-// -----------------------------
-// Now enable JSON parsing for normal routes
-// -----------------------------
+/* ------------------------------------
+   NORMAL JSON ROUTES
+------------------------------------ */
 app.use(express.json());
 
-// Clerk middleware (auth)
+// Clerk auth middleware
 app.use(clerkMiddleware());
 
-// Clerk webhooks (Svix verification handler)
+// Clerk → Svix Webhook handler
 app.use("/api/clerk", clerkWebhooks);
 
-// Main app routes
+/* ------------------------------------
+   MAIN API ROUTES
+------------------------------------ */
 app.get("/", (req, res) => res.send("API is working"));
 
 app.use("/api/user", userRouter);
@@ -356,27 +346,17 @@ app.use("/api/bookings", bookingRouter);
 app.use("/api/owner", ownerRoutes);
 app.use("/api/admin", adminRoutes);
 
-// Global error handler (simple)
+/* ------------------------------------
+   GLOBAL ERROR CATCHER
+------------------------------------ */
 app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err && err.stack ? err.stack : err);
+  console.error("Server error:", err);
   if (res.headersSent) return next(err);
-  res.status(500).json({ success: false, message: err && err.message ? err.message : "Server error" });
+  return res.status(500).json({ success: false, message: err.message || "Server error" });
 });
 
-// Optional: handle unhandled rejections & uncaught exceptions (log + exit)
-process.on("unhandledRejection", (reason) => {
-  console.error("Unhandled Rejection:", reason);
-  // Depending on your preference, you might exit or attempt graceful shutdown.
-  // process.exit(1);
-});
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err && err.stack ? err.stack : err);
-  // process.exit(1);
-});
-
+/* ------------------------------------
+   SERVER START
+------------------------------------ */
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
