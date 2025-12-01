@@ -121,23 +121,44 @@ cloudinary;
 
 const app = express();
 
+/*
+===========================================
+   FIXED CORS — ALLOW BOTH DOMAINS
+===========================================
+*/
+const allowedOrigins = [
+  "https://theholidaycreators-1.onrender.com",   // Render frontend
+  "https://theholidaycreators.com",              // Custom domain
+  "https://www.theholidaycreators.com"           // WWW version
+];
+
 app.use(
   cors({
-    origin: "https://theholidaycreators-1.onrender.com", // exact origin, not '*'
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow curl/postman
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("CORS blocked: Origin not allowed"), false);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
   })
 );
 
-// -----------------------------
-// ⭐ STRIPE WEBHOOK (raw body)
-// -----------------------------
+app.options("*", cors()); // Handle preflight requests globally
+
+/*
+===========================================
+   WEBHOOKS (raw body)
+===========================================
+*/
+
+// ⭐ STRIPE WEBHOOK (raw body parser)
 app.post("/api/stripe", express.raw({ type: "application/json" }), stripeWebhooks);
 
-// -----------------------------
-// ⭐ RAZORPAY WEBHOOK (raw body)
-// -----------------------------
+// ⭐ RAZORPAY WEBHOOK (raw body required)
 app.post(
   "/api/razorpay-webhook",
   express.raw({ type: "application/json" }),
@@ -145,23 +166,24 @@ app.post(
     try {
       req.rawBody = req.body instanceof Buffer ? req.body.toString("utf8") : "";
       req.body = JSON.parse(req.rawBody || "{}");
-    } catch (err) {
-      // fallback
-    }
+    } catch (err) {}
     return razorpayWebhookHandler(req, res);
   }
 );
 
-// -----------------------------
-// Now enable JSON parsing
-// -----------------------------
+/*
+===========================================
+   NORMAL JSON BODY PARSING
+===========================================
+*/
 app.use(express.json());
 app.use(clerkMiddleware());
 
-// Clerk Webhooks
-app.use("/api/clerk", clerkWebhooks);
-
-// Main Routes
+/*
+===========================================
+   ROUTES
+===========================================
+*/
 app.get("/", (req, res) => res.send("API is working"));
 app.use("/api/user", userRouter);
 app.use("/api/hotels", hotelRouter);
@@ -170,6 +192,11 @@ app.use("/api/bookings", bookingRouter);
 app.use("/api/owner", ownerRoutes);
 app.use("/api/admin", adminRoutes);
 
+/*
+===========================================
+   START SERVER
+===========================================
+*/
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
 
