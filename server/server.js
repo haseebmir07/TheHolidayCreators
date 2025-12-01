@@ -72,14 +72,26 @@ cloudinary;
 
 const app = express();
 
+/*  
+===========================================
+ FIXED CORS — ALLOW ANY ORIGIN + CREDENTIALS
+===========================================
+*/
 app.use(
   cors({
-    origin: "*",
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like Curl / Postman)
+      if (!origin) return callback(null, true);
+      return callback(null, true); // Accept any origin
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
   })
 );
+
+// handle preflight OPTIONS globally
+app.options("*", cors());
 
 // -----------------------------
 // ⭐ STRIPE WEBHOOK (raw body)
@@ -104,7 +116,7 @@ app.post(
 );
 
 // -----------------------------
-// Now enable JSON parsing
+// JSON Parsing (after raw)
 // -----------------------------
 app.use(express.json());
 app.use(clerkMiddleware());
