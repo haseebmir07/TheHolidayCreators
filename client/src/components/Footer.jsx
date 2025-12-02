@@ -72,7 +72,7 @@ const Footer = () => {
                                 +91 7006112133 , +91 9906681245
                             </a>
 
-                            <a className='flex items-center gap-2 text-sm hover:underline' href="mailto:hello@theholidaycreators.com">
+                            <a className='flex items-center gap-2 text-sm hover:underline' href="mailto:info@theholidaycreators.com">
                                 {/* simple mail SVG */}
                                 <svg xmlns="http://www.w3.org/2000/svg" className='w-4 h-4' viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l9 6 9-6" />
