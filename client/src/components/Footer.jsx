@@ -64,7 +64,7 @@ const Footer = () => {
                         </p>
 
                         <div className='mt-3 flex flex-col gap-2'>
-                            <a className='flex items-center gap-2 text-sm hover:underline' href="tel:+1234567890">
+                            <a className='flex items-center gap-2 text-sm hover:underline' href="tel:+91 7006112133 , +91 9906681245">
                                 {/* simple phone SVG */}
                                 <svg xmlns="http://www.w3.org/2000/svg" className='w-4 h-4' viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 5.5A2.5 2.5 0 015.5 3h1A2.5 2.5 0 019 5.5v1A2.5 2.5 0 016.5 9H6a12 12 0 0012 12v-.5A2.5 2.5 0 0019.5 18h-1A2.5 2.5 0 0116 15.5v-1" />
