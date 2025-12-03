@@ -1,22 +1,31 @@
-name: Render - Keep Alive (Restart Service)
+name: Keep Backend Alive (Ping Every Minute)
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '*/1 * * * *'   # Runs every 5 minutes
-  workflow_dispatch: {}
+    - cron: '*/5 * * * *'  # fallback every 5 minutes if chaining breaks
 
 jobs:
-  keep-alive:
+  ping:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      workflows: write
+
     steps:
-      - name: Restart Render service via API
-        env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+      - name: Ping backend URL
         run: |
-          echo "Restarting Render service: $SERVICE_ID"
-          curl -s -X POST "https://api.render.com/v1/services/$SERVICE_ID/restart" \
-            -H "Authorization: Bearer $RENDER_API_KEY" \
-            -H "Accept: application/json" \
-            -H "Content-Type: application/json" \
-            --fail
+          echo "Pinging https://api.theholidaycreators.com/ ..."
+          curl -fsS https://api.theholidaycreators.com/ > /dev/null || echo "Ping failed"
+
+      - name: Wait and trigger next run
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          # wait 60 seconds, then dispatch this workflow again on the same branch
+          sleep 60
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/${{ github.workflow }}/dispatches \
+            -d '{"ref":"main"}' || echo "Dispatch failed"
