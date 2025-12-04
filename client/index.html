@@ -5,22 +5,66 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>The Holiday Creators - Tours & Travel</title>
+    <!-- SPEED + SAFE: Preconnect Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+<!-- Load Outfit & Playfair (not blocked) -->
+<link
+  href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&family=Playfair:ital,opsz,wght@0,5..1200,300..900;1,5..1200,300..900&display=swap"
+  rel="stylesheet"
+/>
+
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    <!--Start of Tawk.to Script-->
-<script type="text/javascript">
-var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
-(function(){
-var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
-s1.async=true;
-s1.src='https://embed.tawk.to/692ecc40e038f8197ec119ff/1jbfcrnqa';
-s1.charset='UTF-8';
-s1.setAttribute('crossorigin','*');
-s0.parentNode.insertBefore(s1,s0);
-})();
+<script>
+  (function loadTawkSafely() {
+    // If you want to disable chat in dev, set window.__TAWK_DISABLED__ = true before this runs
+    if (window.__TAWK_DISABLED__) return;
+
+    // Load after window.load to avoid blocking initial render
+    function attachTawkScript() {
+      // small delay to reduce fingerprinting/tracking classification
+      setTimeout(() => {
+        // avoid duplicate
+        if (document.querySelector('script[src*="embed.tawk.to"]')) return;
+
+        var s = document.createElement('script');
+        s.src = 'https://embed.tawk.to/692ecc40e038f8197ec119ff/1jbfcrnqa';
+        s.async = true;
+        s.defer = true;
+
+        s.onload = function () {
+          console.info('Tawk loaded');
+          window.__TAWK_LOADED__ = true;
+          // replay queued calls if any
+          if (window.__TAWK_QUEUE__ && window.Tawk_API) {
+            (window.__TAWK_QUEUE__ || []).forEach(item => {
+              try { window.Tawk_API[item.fnName].apply(window.Tawk_API, item.args); } catch (e) {}
+            });
+            window.__TAWK_QUEUE__ = [];
+          }
+        };
+
+        s.onerror = function (err) {
+          console.warn('Tawk script blocked or failed to load', err);
+          window.__TAWK_LOAD_ERROR__ = true;
+        };
+
+        document.body.appendChild(s);
+      }, 600); // 600ms after load
+    }
+
+    if (document.readyState === 'complete') {
+      attachTawkScript();
+    } else {
+      window.addEventListener('load', attachTawkScript, { once: true });
+    }
+  })();
 </script>
-<!--End of Tawk.to Script-->
+
   </body>
+
 </html>
