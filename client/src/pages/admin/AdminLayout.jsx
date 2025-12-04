@@ -44,12 +44,12 @@ const AdminLayout = () => {
             </span>
             <span>Packages</span>
           </NavLink>
-          <NavLink to="/admin/users" className={navItemClass}>
+          {/* <NavLink to="/admin/users" className={navItemClass}>
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-slate-900/5 text-xs">
               👤
             </span>
             <span>Users</span>
-          </NavLink>
+          </NavLink> */}
           <NavLink to="/admin/bookings" className={navItemClass}>
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-slate-900/5 text-xs">
               📁
