@@ -38,11 +38,11 @@ import uploadArea from "./uploadArea.svg";
 import totalBookingIcon from "./totalBookingIcon.svg";
 import totalRevenueIcon from "./totalRevenueIcon.svg";
 // src/assets/assets.js (example snippet)
-import hero1 from "./heroImage.jpeg";
-import hero2 from "./heroImage-2.jpeg";
-import hero3 from "./heroImage-3.jpeg";
-import hero4 from "./heroImage-4.jpeg";
-import hero5 from "./heroImage-5.jpeg";
+import hero1 from "./heroImage.jpg";
+import hero2 from "./heroImage-2.jpg";
+import hero3 from "./heroImage-3.jpg";
+import hero4 from "./heroImage-4.jpg";
+import hero5 from "./heroImage-5.jpg";
 
 
 
