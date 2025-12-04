@@ -3,12 +3,11 @@
   "version": "1.0.0",
   "description": "",
   "main": "server.js",
- "scripts": {
-  "dev": "nodemon server.js",
-  "serve": "node server.js",
-  "start": "node server.js"
-},
-
+  "scripts": {
+    "dev": "nodemon server.js",
+    "serve": "node server.js",
+    "start": "node server.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -31,6 +30,7 @@
     "pdfkit": "^0.17.2",
     "puppeteer": "^24.31.0",
     "razorpay": "^2.9.6",
+    "resend": "^6.5.2",
     "streamifier": "^0.1.1",
     "stripe": "^18.0.0",
     "svix": "^1.63.1"
