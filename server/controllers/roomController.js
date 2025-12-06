@@ -75,7 +75,7 @@ export const createRoom = async (req, res) => {
       whatThisPlaceOffers,
     });
 
-    res.json({ success: true, message: "Room created successfully" });
+    res.json({ success: true, message: "Package created successfully" });
   } catch (error) {
     console.error("createRoom error:", error);
     res.json({ success: false, message: error.message });

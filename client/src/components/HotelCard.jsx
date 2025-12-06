@@ -1,34 +1,49 @@
+// src/components/HotelCard.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { assets } from "../assets/assets";
 import { useAppContext } from "../context/AppContext";
-import LazyImage from "./LazyImage";
+import { assets } from "../assets/assets";
 
 /**
- * HotelCard.jsx
- * - Fixed card height + full title visible
- * - Smooth slider with CSS translate3d + cubic-bezier timing
- * - Touch / pointer swipe support
- * - Autoplay with pause on hover / drag
- * - NOW WITH LAZYIMAGE FOR PERFORMANCE
+ * HotelCard
+ * - shows room/hotel info
+ * - image slider
+ * - uses dynamic room.fullPrice from DB
  */
 
 const HotelCard = ({ room }) => {
   const { currency } = useAppContext();
 
-  const images = (room?.images && room.images.length > 0) ? room.images : [assets.placeholderImage];
-  const hotelName = room?.hotel?.name || room?.name || "Hotel Name";
-  const hotelLocation = room?.hotel?.city || room?.hotel?.address || "Location";
-  const price = room?.pricePerNight ?? room?.totalPrice ?? 0;
-  const rating = room?.rating ?? 4.9;
-  const fullPrice = price + 3000;
+  const images =
+    room?.images && room.images.length > 0
+      ? room.images
+      : [assets.placeholderImage];
 
-  const length = images.length;
+  const hotelName = room?.hotel?.name || room?.name || "Package";
+  const hotelLocation =
+    room?.hotel?.city || room?.hotel?.address || "Location";
+
+  // base “current” price (per person / per night)
+  const price =
+    room?.pricePerNight ??
+    room?.pricePerPerson ??
+    room?.totalPrice ??
+    0;
+
+  // ✅ FULL PRICE FROM DB (admin controlled)
+  const fullPrice =
+    room?.fullPrice !== undefined &&
+    room?.fullPrice !== null &&
+    room?.fullPrice !== ""
+      ? Number(room.fullPrice)
+      : Number(price);
+
+  const rating = room?.rating ?? 4.9;
+
   const [index, setIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  // for pointer/touch dragging
   const containerRef = useRef(null);
   const drag = useRef({
     startX: 0,
@@ -38,61 +53,77 @@ const HotelCard = ({ room }) => {
     startIndex: 0,
   });
 
+  const length = images.length;
+
   // autoplay
   useEffect(() => {
     if (isPaused || isDragging || length <= 1) return;
-    const id = setInterval(() => {
-      setIndex((i) => (i + 1) % length);
-    }, 3000);
+    const id = setInterval(
+      () => setIndex((i) => (i + 1) % length),
+      3000
+    );
     return () => clearInterval(id);
   }, [isPaused, isDragging, length]);
 
-  // move helpers
-  const goTo = (i) => setIndex(((i % length) + length) % length);
+  const goTo = (i) =>
+    setIndex(((i % length) + length) % length);
   const next = () => goTo(index + 1);
   const prev = () => goTo(index - 1);
 
-  // pointer / touch handlers
+  // pointer/touch events
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    const onPointerDown = (e) => {
+    const onDown = (e) => {
       drag.current.dragging = true;
-      drag.current.startX = (e.touches ? e.touches[0].clientX : e.clientX);
+      drag.current.startX = e.touches
+        ? e.touches[0].clientX
+        : e.clientX;
       drag.current.currentX = drag.current.startX;
+      drag.current.deltaX = 0;
       drag.current.startIndex = index;
       setIsDragging(true);
       setIsPaused(true);
     };
 
-    const onPointerMove = (e) => {
+    const onMove = (e) => {
       if (!drag.current.dragging) return;
-      const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
+      const clientX = e.touches
+        ? e.touches[0].clientX
+        : e.clientX;
       drag.current.currentX = clientX;
-      drag.current.deltaX = clientX - drag.current.startX;
+      drag.current.deltaX =
+        clientX - drag.current.startX;
 
-      // direct transform update for smoother dragging
       const track = el.querySelector(".hotel-track");
       if (track) {
-        const width = el.clientWidth;
-        const offsetPercent = (drag.current.deltaX / width) * 100;
+        const width = el.clientWidth || 1;
+        const offsetPercent =
+          (drag.current.deltaX / width) * 100;
         track.style.transition = "none";
-        track.style.transform = `translate3d(${-(drag.current.startIndex * (100 / length)) + offsetPercent}%, 0, 0)`;
+        track.style.transform = `translate3d(${
+          -(drag.current.startIndex * (100 / length)) +
+          offsetPercent
+        }%,0,0)`;
       }
     };
 
-    const onPointerUp = () => {
+    const onUp = () => {
       if (!drag.current.dragging) return;
       drag.current.dragging = false;
       setIsDragging(false);
 
       const delta = drag.current.deltaX;
-      const threshold = Math.max(20, el.clientWidth * 0.12);
-
       const track = el.querySelector(".hotel-track");
-      if (track) track.style.transition = "transform 600ms cubic-bezier(.22,.9,.33,1)";
+      if (track)
+        track.style.transition =
+          "transform 600ms cubic-bezier(.22,.9,.33,1)";
 
+      const threshold = Math.max(
+        20,
+        (el.clientWidth || 1) * 0.12
+      );
       if (delta > threshold) prev();
       else if (delta < -threshold) next();
       else goTo(drag.current.startIndex);
@@ -102,22 +133,26 @@ const HotelCard = ({ room }) => {
     };
 
     // touch
-    el.addEventListener("touchstart", onPointerDown, { passive: true });
-    el.addEventListener("touchmove", onPointerMove, { passive: true });
-    el.addEventListener("touchend", onPointerUp);
+    el.addEventListener("touchstart", onDown, {
+      passive: true,
+    });
+    el.addEventListener("touchmove", onMove, {
+      passive: true,
+    });
+    el.addEventListener("touchend", onUp);
 
     // mouse
-    el.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("mousemove", onPointerMove);
-    window.addEventListener("mouseup", onPointerUp);
+    el.addEventListener("mousedown", onDown);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
 
     return () => {
-      el.removeEventListener("touchstart", onPointerDown);
-      el.removeEventListener("touchmove", onPointerMove);
-      el.removeEventListener("touchend", onPointerUp);
-      el.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("mousemove", onPointerMove);
-      window.removeEventListener("mouseup", onPointerUp);
+      el.removeEventListener("touchstart", onDown);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onUp);
+      el.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
     };
   }, [index, length]);
 
@@ -125,14 +160,18 @@ const HotelCard = ({ room }) => {
     display: "flex",
     height: "100%",
     width: `${100 * length}%`,
-    transform: `translate3d(-${(100 / length) * index}%, 0, 0)`,
-    transition: isDragging ? "none" : "transform 600ms cubic-bezier(.22,.9,.33,1)",
+    transform: `translate3d(-${
+      (100 / length) * index
+    }%,0,0)`,
+    transition: isDragging
+      ? "none"
+      : "transform 600ms cubic-bezier(.22,.9,.33,1)",
     willChange: "transform",
   };
 
   return (
     <Link
-      to={"/rooms/" + room._id}
+      to={`/rooms/${room._id}`}
       className="hotel-card"
       style={{
         width: "100%",
@@ -141,7 +180,7 @@ const HotelCard = ({ room }) => {
         borderRadius: 10,
         overflow: "hidden",
         background: "#fff",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
         display: "flex",
         flexDirection: "column",
         textDecoration: "none",
@@ -149,13 +188,13 @@ const HotelCard = ({ room }) => {
         userSelect: isDragging ? "none" : "auto",
       }}
     >
-      {/* slider container */}
+      {/* IMAGE SLIDER */}
       <div
         ref={containerRef}
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
         style={{
-          height: 180,
+          height: 190,
           width: "100%",
           position: "relative",
           overflow: "hidden",
@@ -163,7 +202,6 @@ const HotelCard = ({ room }) => {
           cursor: isDragging ? "grabbing" : "grab",
         }}
       >
-        {/* ⭐ LazyImage used here */}
         <div className="hotel-track" style={trackStyle}>
           {images.map((src, i) => (
             <img
@@ -182,20 +220,27 @@ const HotelCard = ({ room }) => {
           ))}
         </div>
 
-        {/* controls */}
+        {/* slider controls */}
         {length > 1 && (
           <>
             <button
-              aria-label="Previous"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); prev(); }}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                prev();
+              }}
               style={ctrlBtnLeft}
             >
               ‹
             </button>
-
             <button
-              aria-label="Next"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); next(); }}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                next();
+              }}
               style={ctrlBtnRight}
             >
               ›
@@ -205,18 +250,24 @@ const HotelCard = ({ room }) => {
               {images.map((_, i) => (
                 <button
                   key={i}
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); goTo(i); }}
-                  aria-label={`Go to ${i + 1}`}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    goTo(i);
+                  }}
                   style={{
                     width: 8,
                     height: 8,
-                    borderRadius: 8,
+                    borderRadius: 999,
                     border: "none",
-                    padding: 0,
                     margin: 0,
+                    padding: 0,
                     cursor: "pointer",
-                    background: i === index ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)",
-                    boxShadow: "0 0 0 1px rgba(0,0,0,0.08) inset"
+                    background:
+                      i === index
+                        ? "rgba(255,255,255,0.95)"
+                        : "rgba(255,255,255,0.6)",
                   }}
                 />
               ))}
@@ -225,43 +276,121 @@ const HotelCard = ({ room }) => {
         )}
       </div>
 
-      {/* body */}
-      <div style={{ flex: 1, padding: "10px 12px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+      {/* CARD BODY */}
+      <div
+        style={{
+          flex: 1,
+          padding: "10px 14px 12px",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+        }}
+      >
         <div>
-          <div style={{ fontSize: 18, fontWeight: 600, fontFamily: "'Poppins', sans-serif", color: "#111", marginBottom: 6, lineHeight: 1.25 }}>
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 600,
+              marginBottom: 4,
+            }}
+          >
             {hotelName}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#6b7280", fontSize: 13 }}>
-            <img src={assets.locationIcon} alt="loc" style={{ width: 14 }} />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              color: "#6b7280",
+              fontSize: 13,
+            }}
+          >
+            <img
+              src={assets.locationIcon}
+              alt=""
+              style={{ width: 14, height: 14 }}
+            />
             <span>{hotelLocation}</span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
-            <img src={assets.starIconFilled} alt="star" style={{ width: 14 }} />
-            <span style={{ fontWeight: 700, color: "#f59e0b" }}>{rating}</span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              marginTop: 6,
+            }}
+          >
+            <img
+              src={assets.starIconFilled}
+              alt=""
+              style={{ width: 14, height: 14 }}
+            />
+            <span
+              style={{
+                fontWeight: 600,
+                color: "#f59e0b",
+                fontSize: 13,
+              }}
+            >
+              {rating}
+            </span>
           </div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div
+          style={{
+            marginTop: 8,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>
-              {currency}{price} <small style={{ color: "#6b7280" }}>/Person</small>
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 16,
+                marginBottom: 2,
+              }}
+            >
+              {currency}
+              {price}
+              <span
+                style={{
+                  fontSize: 12,
+                  color: "#6b7280",
+                  marginLeft: 4,
+                }}
+              >
+                / Booking Amount-Person
+              </span>
             </div>
-            <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}>
-              Full Price: {currency}{fullPrice}
+            <div
+              style={{
+                fontSize: 13,
+                color: "#555",
+                fontWeight: "bold",
+              }}
+            >
+              Full Price: {currency}
+              {fullPrice} / Person
             </div>
           </div>
 
           <button
+            type="button"
             style={{
-              padding: "8px 12px",
-              background: "#111",
+              padding: "8px 14px",
+              background: "#111827",
               color: "#fff",
-              borderRadius: 6,
+              borderRadius: 8,
               border: "none",
+              fontSize: 13,
+              fontWeight: 600,
               cursor: "pointer",
-              fontWeight: 600
+              whiteSpace: "nowrap",
             }}
           >
             Book Now
@@ -272,25 +401,26 @@ const HotelCard = ({ room }) => {
   );
 };
 
-/* control button styles */
-const ctrlBtnCommon = {
+/* Controls + dots style */
+const ctrlBtnBase = {
   position: "absolute",
   top: "50%",
   transform: "translateY(-50%)",
-  background: "rgba(0,0,0,0.45)",
-  color: "#fff",
+  width: 32,
+  height: 32,
+  borderRadius: 999,
   border: "none",
-  width: 34,
-  height: 34,
-  borderRadius: 8,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  zIndex: 12,
+  background: "rgba(0,0,0,0.45)",
+  color: "#fff",
   cursor: "pointer",
+  zIndex: 10,
 };
-const ctrlBtnLeft = { ...ctrlBtnCommon, left: 10 };
-const ctrlBtnRight = { ...ctrlBtnCommon, right: 10 };
+
+const ctrlBtnLeft = { ...ctrlBtnBase, left: 10 };
+const ctrlBtnRight = { ...ctrlBtnBase, right: 10 };
 
 const dotsWrap = {
   position: "absolute",
@@ -298,8 +428,8 @@ const dotsWrap = {
   left: "50%",
   transform: "translateX(-50%)",
   display: "flex",
-  gap: 8,
-  zIndex: 12
+  gap: 6,
+  zIndex: 10,
 };
 
 export default HotelCard;

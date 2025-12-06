@@ -97,11 +97,11 @@ const RoomDetails = () => {
         if (data.isAvailable) {
           setIsAvailable(true);
           setShowBilling(true);
-          toast.success("Room is available");
+          toast.success("Slot is available");
         } else {
           setIsAvailable(false);
           setShowBilling(false);
-          toast.error("Room is not available");
+          toast.error("Slot is not available");
         }
       } else {
         toast.error(data.message || "Availability check failed");

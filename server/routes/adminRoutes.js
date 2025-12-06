@@ -1,81 +1,86 @@
+// server/routes/adminRoutes.js
 import express from "express";
 import { requireAuth } from "@clerk/express";
 import { requireRole } from "../middleware/requireRole.js";
+
 import {
   getAdminOverview,
   getAdminBookings,
   updateAdminBooking,
+  // HOTELS
+  createAdminHotel,
   getAdminHotels,
   updateAdminHotel,
   deleteAdminHotel,
-  // NEW: deleteHotelOnly should be exported by your adminController.js
   deleteHotelOnly,
   getAdminHotelRooms,
+  // ROOMS
   updateAdminRoom,
   deleteAdminRoom,
+  createAdminRoom,
+  // USERS
   getAdminUsers,
   updateAdminUserRole,
   deleteAdminUser,
+  // BOOKING STATUS
   setBookingPaid,
   cancelBooking,
-  createAdminRoom,
 } from "../controllers/adminController.js";
-
 
 import {
   createAdminRoomWithImages,
-  // uploadImagesForAdminRoom,
   updateAdminRoomWithImages,
 } from "../controllers/adminRoomsController.js";
 
-
 import { upload } from "../utils/uploadHelpers.js";
-
-import multer from "multer";
-// const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
 
-// Clerk auth + role check
+// Auth + admin role
 router.use(requireAuth());
 router.use(requireRole("admin"));
 
 // Overview
 router.get("/overview", getAdminOverview);
 
-// Bookings management
+// Bookings
 router.get("/bookings", getAdminBookings);
 router.patch("/bookings/:id", updateAdminBooking);
+router.patch("/bookings/:id/pay", setBookingPaid);
+router.patch("/bookings/:id/cancel", cancelBooking);
 
 // Hotels
 router.get("/hotels", getAdminHotels);
+router.post("/hotels", createAdminHotel);
+router.put("/hotels/:id", updateAdminHotel);
+router.delete("/hotels/:id", deleteAdminHotel);
 
-// NEW: hotel-only delete endpoint (doesn't cascade-delete rooms/bookings)
-// DELETE /api/admin/hotels/:id/only
+// Optional: delete only hotel, keep rooms
 router.delete("/hotels/:id/only", deleteHotelOnly);
 
-// existing delete that may remove hotel + related data (keeps for backward compatibility)
-router.delete("/hotels/:hotelId/rooms/:roomId", deleteAdminRoom);
+// Hotel rooms list
 router.get("/hotels/:id/rooms", getAdminHotelRooms);
 
-// Rooms
-router.post("/hotels/:hotelId/rooms", upload.array("images", 8), createAdminRoomWithImages);
-router.post("/rooms", createAdminRoom);
-// router.post("/rooms/:roomId/images", upload.array("images", 8), uploadImagesForAdminRoom);
-router.put("/hotels/:hotelId/rooms/:roomId", upload.array("images", 8), updateAdminRoomWithImages);
+// Rooms (with images)
+router.post(
+  "/hotels/:hotelId/rooms",
+  upload.array("images", 8),
+  createAdminRoomWithImages
+);
+router.put(
+  "/hotels/:hotelId/rooms/:roomId",
+  upload.array("images", 8),
+  updateAdminRoomWithImages
+);
 
+// Rooms (JSON-only fallback)
+router.post("/rooms", createAdminRoom);
 router.put("/rooms/:roomId", updateAdminRoom);
 router.delete("/rooms/:roomId", deleteAdminRoom);
 
-
-// Users management
+// Users
 router.get("/users", getAdminUsers);
 router.put("/users/:id/role", updateAdminUserRole);
 router.delete("/users/:id", deleteAdminUser);
-
-router.patch("/bookings/:id/pay", setBookingPaid);
-router.patch("/bookings/:id/cancel", cancelBooking);
-router.post("/rooms", createAdminRoom);
-
 
 export default router;
